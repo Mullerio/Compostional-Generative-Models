@@ -1,7 +1,7 @@
 import torch
 from abc import ABC, abstractmethod
 
-class ExplicitDensity(ABC):
+class LogDensity(ABC):
     """
     Abstract class for probability densities where we know log density and its score. 
     """
@@ -32,7 +32,7 @@ class ExplicitDensity(ABC):
         return score.squeeze((1, 2, 3))  # [batch_size, dim]
 
 
-class ImplicitDensity(ABC):
+class SampleDensity(ABC):
     """
     Abstract class for probability densities we can sample from.
     """
@@ -112,7 +112,7 @@ class Beta(ABC):
         return dt.view(-1, 1)
 
 
-class Gaussian(torch.nn.Module, ImplicitDensity, ExplicitDensity):
+class Gaussian(torch.nn.Module, LogDensity, SampleDensity):
     """
     Multivariate Gaussian distribution, wrapper around Multivariate Gaussian
     """

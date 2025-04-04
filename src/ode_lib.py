@@ -1,6 +1,6 @@
 import torch
 from abc import ABC, abstractmethod
-from base_probability_paths import ConditionalProbabilityPath
+from path_lib import ConditionalProbabilityPath
 
 """Basic abstract classes for ODEs/SDEs using Torch. This is adapted from the labs of MIT CS 6.S184 by Peter Holderrieth and Ezra Erives."""
 

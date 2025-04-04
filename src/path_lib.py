@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import torch
-from base_probability import ImplicitDensity, ExplicitDensity, Gaussian, Alpha, Beta
-from base_ode import ODE, SDE
+from prob_lib import LogDensity, SampleDensity, Gaussian, Alpha, Beta
+from ode_lib import ODE, SDE
 
 """Basic abstract classes for basic flows and probability. This is partially adapted from MIT CS 6.S184 by Peter Holderrieth and Ezra Erives."""
 
@@ -9,7 +9,7 @@ class ConditionalProbabilityPath(torch.nn.Module, ABC):
     """
     Abstract base class for conditional probability paths.
     """
-    def __init__(self, p_init: ImplicitDensity, p_data: ImplicitDensity):
+    def __init__(self, p_init: SampleDensity, p_data: SampleDensity):
         super().__init__()
         self.p_init = p_init
         self.p_data = p_data
@@ -83,7 +83,7 @@ class GaussianConditionalProbabilityPath(ConditionalProbabilityPath):
     """
     Gaussian Path following N(alpha_t * z, beta_t**2 * I_d)
     """
-    def __init__(self, p_data: ImplicitDensity, alpha: Alpha, beta: Beta, device = 'cuda'):
+    def __init__(self, p_data: SampleDensity, alpha: Alpha, beta: Beta, device = 'cuda'):
         p_simple = Gaussian.isotropic(p_data.dim, 1.0)
         super().__init__(p_simple, p_data)
         self.alpha = alpha
@@ -198,3 +198,49 @@ class ConditionalVectorFieldSDE(SDE):
             - u_t(x|z): shape (batch_size, dim)
         """
         return self.sigma * torch.randn_like(x)
+
+
+class LinearConditionalProbabilityPath(ConditionalProbabilityPath):
+    def __init__(self, p_simple: SampleDensity, p_data: SampleDensity):
+        super().__init__(p_simple, p_data)
+
+    def sample_conditioning_variable(self, num_samples: int) -> torch.Tensor:
+        """
+        Samples the conditioning variable z ~ p_data(x)
+        Args:
+            num_samples (int) : the number of samples
+        Returns:
+            z (torch.Tensor): samples from p(z), [num_samples, ]
+        """
+        return self.p_data.sample(num_samples)
+    
+    def sample_conditional_path(self, z: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        """
+        Samples the random variable x_t = (1-t) x_0 + tz
+        Args:
+            z: conditioning variable (num_samples, dim)
+            t: time (num_samples, 1)
+        Returns:
+            x: samples from p_t(x|z), (num_samples, dim)
+        """
+        x0 = self.p_simple.sample(z.shape[0])
+        return (1 - t) * x0 + t * z
+        
+    def conditional_vector_field(self, x: torch.Tensor, z: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        """
+        Evaluates the conditional vector field of linear path u_t(x|z) = (z - x) / (1 - t)
+        Note: Only defined on t in [0,1)
+        Args:
+            x: position variable [num_samples, dim]
+            z: conditioning variable [num_samples, dim]
+            t: time [num_samples, 1]
+        Returns:
+            conditional_vector_field: conditional vector field (num_samples, dim)
+        """ 
+        return (z - x) / (1 - t)
+
+    def conditional_score(self, x: torch.Tensor, z: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        """
+        Not known for Linear Conditional Probability Paths
+        """ 
+        raise NotImplementedError("Conditional Score is not known for Linear Probability Paths")
