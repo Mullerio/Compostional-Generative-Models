@@ -1,6 +1,8 @@
 import torch
 from abc import ABC, abstractmethod
 
+"""Abstract classes for probability, including schedulers for gaussian paths """
+
 class LogDensity(ABC):
     """
     Abstract class for probability densities where we know log density and its score. 
@@ -110,37 +112,3 @@ class Beta(ABC):
         t = t.unsqueeze(1) # (num_samples, 1, 1)
         dt = torch.vmap(torch.functional.jacrev(self))(t) # (num_samples, 1, 1, 1, 1)
         return dt.view(-1, 1)
-
-
-class Gaussian(torch.nn.Module, LogDensity, SampleDensity):
-    """
-    Multivariate Gaussian distribution, wrapper around Multivariate Gaussian
-    """
-    def __init__(self, mean: torch.Tensor, cov: torch.Tensor):
-        """
-        mean: shape [dim,]
-        cov: shape [dim,dim]
-        """
-        super().__init__()
-        self.register_buffer("mean", mean)
-        self.register_buffer("cov", cov)
-
-    @property
-    def dim(self) -> int:
-        return self.mean.shape[0]
-
-    @property
-    def distribution(self):
-        return torch.distributions.MultivariateNormal(self.mean, self.cov, validate_args=False)
-
-    def sample(self, num_samples) -> torch.Tensor:
-        return self.distribution.sample((num_samples,))
-        
-    def log_density(self, x: torch.Tensor):
-        return self.distribution.log_prob(x).view(-1, 1)
-
-    @classmethod
-    def isotropic(cls, dim: int, std: float) -> "Gaussian":
-        mean = torch.zeros(dim)
-        cov = torch.eye(dim) * std ** 2
-        return cls(mean, cov)

@@ -1,8 +1,7 @@
 import torch
 from abc import ABC, abstractmethod
-from path_lib import ConditionalProbabilityPath
 
-"""Basic abstract classes for ODEs/SDEs using Torch. This is adapted from the labs of MIT CS 6.S184 by Peter Holderrieth and Ezra Erives."""
+"""Basic abstract classes for ODEs/SDEs using Torch, adapted from the labs of MIT CS 6.S184 by Peter Holderrieth and Ezra Erives."""
 
 class ODE(ABC):
     """
@@ -54,9 +53,9 @@ class Sampler(ABC):
         """Setter for dynamically changing solver. """
         self.solver = new_solver
             
-    def sample_single_traj(self, x_init : torch.tensor, steps : torch.Tensor) -> torch.Tensor: 
+    def sample_with_traj(self, x_init : torch.tensor, steps : torch.Tensor) -> torch.Tensor: 
         """
-        Sample the ODE using the given Solver of the Sampler Class  
+        Sample the ODE using the given Solver of the Sampler Class and store its trajectory
 
         Args:
             x_init (torch.tensor): initial state at t_start [batch_size, dim]
@@ -66,20 +65,22 @@ class Sampler(ABC):
             torch.Tensor: trajectory of ODE [number_timesteps, dim]
         """
         number_timesteps = len(steps)
-        traj = torch.zeros(number_timesteps, len(x_init))
+        traj = torch.zeros(number_timesteps, x_init.shape[0], x_init.shape[1])
         traj[0] = x_init
         step_before = 0
         for t, step in enumerate(steps, start=1):
-            x_t = traj[t-1]
-            dt = step - step_before
-            traj[t] = self.solver.step(x_t, step, dt)
-            step_before = step 
+            if t == len(steps):
+                #We are done with simulation
+                return traj
+            x_t = traj[t-1] #get last state
+            dt = step - step_before #calc step size
+            traj[t] = self.solver.step(x_t, step, dt) #get next traj
+            step_before = step #store step from before to calc next step
         
-        return traj 
     
     def sample_without_traj(self, x_init : torch.tensor, steps : torch.Tensor) -> torch.Tensor: 
         """
-        Sample the ODE using the given Solver of the Sampler Class  
+        Sample the ODE using the given Solver of the Sampler Class without storing the entire trajectory
 
         Args:
             x_init (torch.tensor): initial state at t_start [batch_size, dim]

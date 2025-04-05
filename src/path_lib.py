@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 import torch
-from prob_lib import LogDensity, SampleDensity, Gaussian, Alpha, Beta
+from prob_lib import LogDensity, SampleDensity, Alpha, Beta
 from ode_lib import ODE, SDE
+from dataset_lib import Gaussian
 
 """Basic abstract classes for basic flows and probability. This is partially adapted from MIT CS 6.S184 by Peter Holderrieth and Ezra Erives."""
 
