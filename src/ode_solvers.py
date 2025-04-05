@@ -3,9 +3,10 @@ import torch
 
 """Basic ODE/SDE solvers in Torch using ode_lib"""
 
+
 class RungeKuttaSolver(Solver):
     """
-    4th-order Runge-Kutta solver for ODEs
+    4th-order Runge-Kutta solver for ODEs, only works for equispaced samples?
     """
     def __init__(self, ode: ODE):
         super().__init__()
@@ -28,6 +29,19 @@ class RungeKuttaSolver(Solver):
         next_x = x_t + (dt/6.0)*(k1 + 2*k2 + 2*k3 + k4)
         return next_x
 
+class HeunSolver(Solver):
+    """
+    Heun Solver, only works for equispaced dt?
+    """
+    def __init__(self, ode : ODE):
+        self.ode = ode
+
+    def step(self, x_t : torch.Tensor, t : torch.Tensor, dt : torch.Tensor) -> torch.Tensor:
+        
+        k1 = self.ode.drift(x_t, t)
+        y = x_t + dt * k1 
+        return x_t + dt/2*(self.ode.drift(x_t,t) + self.ode.drift(y, t+dt))
+        
 class EulerODESolver(Solver):
     """
     Euler solver for ODEs
