@@ -78,39 +78,3 @@ class EulerSDESolver(Solver):
         
         next_x = x_t + drift + diffusion
         return next_x
-
-# Example Usage ###########################################################
-
-class HarmonicOscillator(ODE):
-    """Simple ODE example: dx/dt = -x"""
-    def drift(self, x_t, t):
-        return -x_t
-
-class OrnsteinUhlenbeck(SDE):
-    """SDE example: dx_t = -x_t dt + σ dW_t"""
-    def __init__(self, sigma: float):
-        self.sigma = sigma
-        
-    def drift(self, x_t, t):
-        return -x_t
-    
-    def difussion(self, x_t, t):
-        return torch.ones_like(x_t) * self.sigma
-
-# Create solvers
-ode_solver = RungeKuttaSolver(HarmonicOscillator())
-sde_solver = EulerSDESolver(OrnsteinUhlenbeck(sigma=0.5))
-
-# Create samplers
-ode_sampler = Sampler(ode_solver)
-sde_sampler = Sampler(sde_solver)
-
-# Sample trajectories
-t_steps = torch.linspace(0, 1, 10).unsqueeze(-1)
-x_init = torch.randn(32, 2)  # Batch of 32, 2D system
-
-# ODE trajectory
-ode_traj = ode_sampler.sample_with_traj(x_init, t_steps)
-
-# SDE trajectory (different noise realization each time)
-sde_traj = sde_sampler.sample_with_traj(x_init, t_steps)

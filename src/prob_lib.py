@@ -9,7 +9,7 @@ class LogDensity(ABC):
     """
     @property
     @abstractmethod
-    def log_prob(self, x : torch.Tensor) -> torch.Tensor:
+    def log_density(self, x : torch.Tensor) -> torch.Tensor:
         """
         Computes log(p(x))
         Args:
