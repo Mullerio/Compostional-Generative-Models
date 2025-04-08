@@ -112,3 +112,76 @@ class Beta(ABC):
         t = t.unsqueeze(1) # (num_samples, 1, 1)
         dt = torch.vmap(torch.functional.jacrev(self))(t) # (num_samples, 1, 1, 1, 1)
         return dt.view(-1, 1)
+    
+class LinearAlpha(Alpha):
+    """
+    Implements alpha_t = t
+    """
+    
+    def __call__(self, t: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            - t: time (num_samples, 1)
+        Returns:
+            - alpha_t (num_samples, 1)
+        """ 
+        return t
+
+    def dt(self, t: torch.Tensor) -> torch.Tensor:
+        """
+        Evaluates d/dt alpha_t.
+        Args:
+            - t: time (num_samples, 1)
+        Returns:
+            - d/dt alpha_t (num_samples, 1)
+        """ 
+        return torch.ones_like(t)
+
+
+class LinearBeta(Beta):
+    """
+    Implements alpha_t = t
+    """
+    
+    def __call__(self, t: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            - t: time (num_samples, 1)
+        Returns:
+            - alpha_t (num_samples, 1)
+        """ 
+        return 1-t
+
+    def dt(self, t: torch.Tensor) -> torch.Tensor:
+        """
+        Evaluates d/dt alpha_t.
+        Args:
+            - t: time (num_samples, 1)
+        Returns:
+            - d/dt alpha_t (num_samples, 1)
+        """ 
+        return -torch.ones_like(t)
+
+
+class SquareRootBeta(Beta):
+    """
+    Implements beta_t = rt(1-t)
+    """
+    def __call__(self, t: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            - t: time (num_samples, 1)
+        Returns:
+            - beta_t (num_samples, 1)
+        """ 
+        return torch.sqrt(1-t)
+
+    def dt(self, t: torch.Tensor) -> torch.Tensor:
+        """
+        Evaluates d/dt alpha_t.
+        Args:
+            - t: time (num_samples, 1)
+        Returns:
+            - d/dt alpha_t (num_samples, 1)
+        """ 
+        return - 0.5 / (torch.sqrt(1 - t) + 1e-4)

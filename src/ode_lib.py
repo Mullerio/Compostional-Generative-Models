@@ -53,6 +53,7 @@ class Sampler(ABC):
         """Setter for dynamically changing solver. """
         self.solver = new_solver
             
+    @torch.no_grad()
     def sample_with_traj(self, x_init : torch.tensor, steps : torch.Tensor) -> torch.Tensor: 
         """
         Sample the ODE using the given Solver of the Sampler Class and store its trajectory
@@ -65,19 +66,21 @@ class Sampler(ABC):
             torch.Tensor: trajectory of ODE [number_timesteps, dim]
         """
         number_timesteps = len(steps)
-        traj = torch.zeros(number_timesteps, x_init.shape[0], x_init.shape[1])
+        traj = torch.zeros((number_timesteps, *x_init.shape), dtype=x_init.dtype, device=x_init.device)
         traj[0] = x_init
-        step_before = 0
-        for t, step in enumerate(steps, start=1):
-            if t == len(steps):
-                #We are done with simulation
-                return traj
-            x_t = traj[t-1] #get last state
-            dt = step - step_before #calc step size
-            traj[t] = self.solver.step(x_t, step, dt) #get next traj
-            step_before = step #store step from before to calc next step
-        
+
+        x = x_init
+        step_before = steps[0]
+        for t in range(1, number_timesteps):
+            step_now = steps[t]
+            dt = step_now - step_before
+            x = self.solver.step(x, step_now, dt)
+            traj[t] = x
+            step_before = step_now
+
+        return traj
     
+    @torch.no_grad()
     def sample_without_traj(self, x_init : torch.tensor, steps : torch.Tensor) -> torch.Tensor: 
         """
         Sample the ODE using the given Solver of the Sampler Class without storing the entire trajectory
@@ -90,12 +93,11 @@ class Sampler(ABC):
             torch.Tensor: final timestep [dim]
         """
         x = x_init
-        step_before = 0
-        for t,step in enumerate(steps, start=1):  
-            dt = step - step_before
-            x = self.solver.step(x, step, dt)
-            step_before = step
-        return x 
+        for t_idx in range(len(steps) - 1):
+            t = steps[:, t_idx]
+            h = steps[:, t_idx + 1] - steps[:, t_idx]
+            x = self.solver.step(x, t, h)
+        return x
         
         
 class SDE(ODE):
@@ -104,7 +106,7 @@ class SDE(ODE):
     We assume that f and g are given on [0,T].
     """
     @abstractmethod
-    def difussion(self, x_t : torch.Tensor,t : torch.Tensor) -> torch.Tensor:
+    def diffusion(self, x_t : torch.Tensor,t : torch.Tensor) -> torch.Tensor:
         """
         Returns g(x_t,t)
         Args:

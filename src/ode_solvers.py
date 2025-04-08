@@ -1,4 +1,4 @@
-from ode_lib import SDE, Solver, ODE, Sampler
+from .ode_lib import SDE, Solver, ODE, Sampler
 import torch
 
 """Basic ODE/SDE solvers in Torch using ode_lib"""
@@ -74,7 +74,7 @@ class EulerSDESolver(Solver):
         dw = torch.randn_like(x_t) * torch.sqrt(dt)
         
         drift = self.sde.drift(x_t, t) * dt
-        diffusion = self.sde.difussion(x_t, t) * dw 
+        diffusion = self.sde.diffusion(x_t, t) * dw 
         
         next_x = x_t + drift + diffusion
         return next_x

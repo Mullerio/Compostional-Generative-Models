@@ -1,4 +1,4 @@
-from ode_solvers import *
+from .ode_solvers import *
 
 class HarmonicOscillator(ODE):
     def drift(self, x_t, t):
@@ -11,7 +11,7 @@ class OrnsteinUhlenbeck(SDE):
     def drift(self, x_t, t):
         return -x_t
     
-    def difussion(self, x_t, t):
+    def diffusion(self, x_t, t):
         return torch.ones_like(x_t) * self.sigma
 
 ode_solver = RungeKuttaSolver(HarmonicOscillator())

@@ -1,6 +1,6 @@
 from sklearn.datasets import make_moons, make_swiss_roll
 import matplotlib.pyplot as plt
-from prob_lib import *
+from .prob_lib import *
 from typing import Optional
 import numpy as np
 import seaborn as sns
@@ -202,7 +202,7 @@ class SwissRoll2D(SampleDensity):
         data, _ = make_swiss_roll(n_samples=n, noise=self.noise)
         data = data[:, [0, 2]]  # project to 2D 
         x = torch.tensor(data, dtype=torch.float32)
-        return apply_affine_2d(x, self.scale, self.rotation, self.offset)
+        return apply_affine_2d(x, self.scale, self.rotation, self.offset).to(self.device)
 
 
 class TwoMoons2D(SampleDensity):
@@ -217,20 +217,21 @@ class TwoMoons2D(SampleDensity):
     def sample(self, n: int) -> torch.Tensor:
         x, _ = make_moons(n_samples=n, noise=self.noise)
         x = torch.tensor(x, dtype=torch.float32)
-        return apply_affine_2d(x, self.scale, self.rotation, self.offset)
+        return apply_affine_2d(x, self.scale, self.rotation, self.offset).to(self.device)
     
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+if __name__ == "__main__":
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-gmm = GaussianMixture.symmetric_2D(nmodes=5,std = 1)
-swiss = SwissRoll2D(device, noise=0.2, scale=(0.5, 0.25), rotation=0)
-moons = TwoMoons2D(device, noise=0.1, scale=2.0, offset=(1.0, -0.5))
+    gmm = GaussianMixture.symmetric_2D(nmodes=5,std = 1)
+    swiss = SwissRoll2D(device, noise=0.2, scale=(0.5, 0.25), rotation=0)
+    moons = TwoMoons2D(device, noise=0.1, scale=2.0, offset=(1.0, -0.5))
 
-samples = swiss.sample(1000)
-plot_samples(samples, title="Swiss Roll",contour=False,save_path="swissrole_plot.png")
+    samples = swiss.sample(1000)
+    plot_samples(samples, title="Swiss Roll",contour=False,save_path="swissrole_plot.png")
 
-samples = moons.sample(1000)
-plot_samples(samples, title="Two Moons",contour=False,save_path="moons_plot.png")
+    samples = moons.sample(1000)
+    plot_samples(samples, title="Two Moons",contour=False,save_path="moons_plot.png")
 
-samples = gmm.sample(1000)
-plot_samples(samples, title="Gaussian Mixture", contour=False, save_path="gmm5_plot.png")
+    samples = gmm.sample(1000)
+    plot_samples(samples, title="Gaussian Mixture", contour=False, save_path="gmm5_plot.png")
