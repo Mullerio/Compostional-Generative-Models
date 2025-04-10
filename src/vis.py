@@ -64,3 +64,5 @@ def plot_samples(samples: torch.Tensor,
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
 
     plt.show()
+    
+#todo nice plotting
