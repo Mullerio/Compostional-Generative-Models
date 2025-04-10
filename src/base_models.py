@@ -75,13 +75,13 @@ class Langevin_withFLow(SDE):
         return torch.randn_like(x_t) * self.eps 
         
 class Langevin_Schedule(SDE):
-    def __init__(self, score_model : BasicMLP, alpha : Alpha, beta : Beta, sigma : float, type = "score"):
+    def __init__(self, score_model : BasicMLP, alpha : Alpha, beta : Beta, sigma : float, model_type = "score"):
         super().__init__()
         self.score = score_model
         self.beta = beta
         self.alpha = alpha
         self.sigma = sigma
-        self.type = type
+        self.type = model_type
 
     def drift(self, x_t : torch.Tensor, t : torch.Tensor) -> torch.Tensor:
         score = self.score(x_t,t)
@@ -201,7 +201,7 @@ class FlowDiffTrainer(BasicTrainer):
         
 
 """
-Noise predictor in the case of gaussian probability paths, only varies from the above case in the gaussian case by constants
+Noise predictor in the case of gaussian probability paths, only varies from the above case in the gaussian case by constants, use "noise" when sampling using this
 """        
 class NoisePredictorTrainer(BasicTrainer):
     def __init__(self, path : GaussianConditionalProbabilityPath, model, optimizer = torch.optim.Adam, lr = 0.01):
@@ -218,7 +218,3 @@ class NoisePredictorTrainer(BasicTrainer):
         
         noise_pred = self.model(x_t,t)
         return F.mse_loss(noise_pred,eps)
-        
-
-##FOR THIS THE PROBLEM IS THAT WE NEED ANOTHER SDE TO SAMPLE;
-# SINCE WE DONT TRAIN THE SCORE BECAUSE WE HAVE - beta_t s_t^theta = e_t^theta so sample differently!

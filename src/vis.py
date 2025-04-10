@@ -39,7 +39,7 @@ def plot_samples(samples: torch.Tensor,
             fill=True,
             cmap=cmap,
             bw_adjust=0.3,
-            levels=100,
+            #levels=100,
             thresh=0.00,
             alpha=0.5,
         )
