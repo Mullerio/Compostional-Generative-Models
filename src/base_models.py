@@ -75,23 +75,31 @@ class Langevin_withFLow(SDE):
         return torch.randn_like(x_t) * self.eps 
         
 class Langevin_Schedule(SDE):
-    def __init__(self, score_model : BasicMLP, schedule : Beta):
+    def __init__(self, score_model : BasicMLP, alpha : Alpha, beta : Beta, sigma : float, type = "score"):
         super().__init__()
         self.score = score_model
-        self.reverse_schedule = schedule
+        self.beta = beta
+        self.alpha = alpha
+        self.sigma = sigma
+        self.type = type
 
     def drift(self, x_t : torch.Tensor, t : torch.Tensor) -> torch.Tensor:
-        
         score = self.score(x_t,t)
-        schedule = self.reverse_schedule(t)
-        
-        return schedule ** 2/2 * score
+        beta_t = self.beta(t)
+        if self.type == "noise":
+            score = score/-beta_t
+        beta_dt = self.beta.dt(t)
+        alpha_t = self.alpha(t) 
+        alpha_dt = self.alpha.dt(t)
+
+        return  (beta_t**2 * alpha_dt/alpha_t - beta_dt* beta_t+ self.sigma**2/2 ) * score+ alpha_dt/alpha_t *x_t
     
     def diffusion(self, x_t : torch.Tensor, t : torch.Tensor) -> torch.Tensor:
         
-        return self.reverse_schedule(t) * torch.randn_like(x_t)
+        return self.sigma * torch.randn_like(x_t)
     
     
+
 class BasicTrainer(ABC):
     def __init__(self, model, optimizer : torch.optim.Optimizer = torch.optim.Adam, lr : float = 0.01):
         super().__init__()
@@ -139,6 +147,36 @@ class BasicTrainer(ABC):
             
         self.model.eval()
             
+
+class ScoreFromVectorField(torch.nn.Module):
+    """
+    FOr Gaussian paths, approximation of score from given flow model/learned vector field
+    """
+    def __init__(self, vector_field: BasicMLP, alpha: Alpha, beta: Beta):
+        super().__init__()
+        self.vector_field = vector_field
+        self.alpha = alpha
+        self.beta = beta
+
+    def forward(self, x: torch.Tensor, t: torch.Tensor):
+        """
+        Args:
+        - x: (bs, dim)
+        Returns:
+        - score: (bs, dim)
+        """
+        alpha_t = self.alpha(t)
+        beta_t = self.beta(t)
+        dt_alpha_t = self.alpha.dt(t)
+        dt_beta_t = self.beta.dt(t)
+
+        num = alpha_t * self.vector_field(x,t) - dt_alpha_t * x
+        den = beta_t ** 2 * dt_alpha_t - alpha_t * dt_beta_t * beta_t
+
+        return num / den     
+
+
+
 class FlowDiffTrainer(BasicTrainer):
     def __init__(self, path : ConditionalProbabilityPath, modeltype : str, model, optimizer = torch.optim.Adam, lr = 0.01):
         super().__init__(model, optimizer, lr)
@@ -154,13 +192,33 @@ class FlowDiffTrainer(BasicTrainer):
         u_theta = self.model(cond_pt, t)
         if self.modeltype == "FM" or self.modeltype == "FlowMatching":
             label = self.path.conditional_vector_field(cond_pt, z, t)   
-        elif self.modeltype == "Diff" or self.modeltype == "Diffusion":
+        elif self.modeltype == "Diff" or self.modeltype == "Diffusion" or self.modeltype == "Score":
             label = self.path.conditional_score(cond_pt,z,t)
         else:
             raise ValueError("Type not Supported, either FlowMatching or Diffusion")
         
         return F.mse_loss(u_theta,label)
         
-    
-    
 
+"""
+Noise predictor in the case of gaussian probability paths, only varies from the above case in the gaussian case by constants
+"""        
+class NoisePredictorTrainer(BasicTrainer):
+    def __init__(self, path : GaussianConditionalProbabilityPath, model, optimizer = torch.optim.Adam, lr = 0.01):
+        super().__init__(model, optimizer, lr)
+        self.path = path
+
+    def get_loss(self, n : int):
+        z = self.path.p_data.sample(n)
+        t = torch.rand(n,1).to(z)
+        alpha_t = self.path.alpha(t) 
+        beta_t = self.path.beta(t)
+        eps = torch.randn_like(z).to(z)
+        x_t = alpha_t * z + beta_t * eps
+        
+        noise_pred = self.model(x_t,t)
+        return F.mse_loss(noise_pred,eps)
+        
+
+##FOR THIS THE PROBLEM IS THAT WE NEED ANOTHER SDE TO SAMPLE;
+# SINCE WE DONT TRAIN THE SCORE BECAUSE WE HAVE - beta_t s_t^theta = e_t^theta so sample differently!
