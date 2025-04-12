@@ -1,19 +1,23 @@
 import torch
 import matplotlib.pyplot as plt
 import seaborn as sns
-
+from src.path_lib import *
+from typing import Optional
+from matplotlib import cm
 
 def plot_samples(samples: torch.Tensor, 
                  title: str = "Sampled Distribution", 
-                 figsize: tuple = (6, 6), 
-                 point_alpha: float = 0.3, 
+                 point_alpha: float = 0.7, 
                  point_size: int = 8, 
-                 kde: bool = True,
-                 contour: bool = True,
-                 cmap: str = "mako",
+                 kde: bool = False,
+                 contour: bool = False,
+                 scatter : bool = True,
+                 grid : bool = True,
+                 contour_cmap: str = "gray",
+                 ax : Optional[plt.Axes] = None,
                  save_path: str = None):
     """
-    Visualize 2D distribution samples with optional KDE and contours.
+    Visualize 2D distribution samples with optional grid, contour etc.
 
     Args:
         samples (torch.Tensor): Tensor of shape (N, 2)
@@ -21,7 +25,6 @@ def plot_samples(samples: torch.Tensor,
         figsize (tuple): Size of the figure
         point_alpha (float): Transparency for scatter points
         point_size (int): Size of scatter points
-        kde (bool): Whether to plot kernel density estimate
         contour (bool): Whether to overlay contour lines
         cmap (str): Colormap for KDE
         save_path (str, optional): Path to save the plot
@@ -29,40 +32,96 @@ def plot_samples(samples: torch.Tensor,
     samples_np = samples.detach().cpu().numpy()
     x, y = samples_np[:, 0], samples_np[:, 1]
 
-    plt.figure(figsize=figsize)
-    plt.style.use("dark_background")
-    sns.set_theme(style="dark", rc={"axes.facecolor": (0, 0, 0, 0)})
+    if ax is None: 
+        ax = plt.gca()   
     
-    if kde:
+    #in case we want to overlay a kde 
+    if kde: 
         sns.kdeplot(
-            x=x, y=y,
-            fill=True,
-            cmap=cmap,
-            bw_adjust=0.3,
-            #levels=100,
-            thresh=0.00,
-            alpha=0.5,
-        )
+        x=x, y=y,
+        fill=True,
+        cmap="mako", # styling to use
+        levels=100, # amount of contours
+        thresh=0.01, # at what level the conoutrs are drawn
+        alpha = 0.1 # low transperacy to not overlay the scatter or contour
+        )  
 
     if contour:
         sns.kdeplot(
             x=x, y=y,
-            cmap="gray",
-            bw_adjust=0.5,
+            cmap=contour_cmap,
+            bw_adjust=1,
             levels=10,
-            linewidths=1
-        )
+            linewidths=1,
+            ax=ax)
 
-    #plt.scatter(x, y, color='black', s=point_size, alpha=point_alpha, edgecolors='none')
-    plt.title(title, fontsize=14)
-    plt.axis("equal")
-    plt.xticks([])
-    plt.yticks([])
-    plt.tight_layout()
+    if scatter:
+        ax.scatter(x, y, color='black', s=point_size, alpha=point_alpha, edgecolors='none')
+    ax.set_title(title, fontsize=14)
+    ax.axis("equal")
+    
+    if grid:
+        ax.grid(True, color='gray', linestyle='--', linewidth=0.5) 
+    
+    if save_path:
+        ax.savefig(save_path, dpi=300, bbox_inches='tight')
+    
+    
+def plot_kde(samples: torch.Tensor, 
+                 title: str = "Kernel Density Estimate of Samples", 
+                 figsize: tuple = (6, 6), 
+                 levels : int = 100,
+                 thresh : float = 0.00, 
+                 cmap: str = "mako",
+                 ax : Optional[plt.Axes] = None,
+                 save_path: str = None):
+    
+    
+    samples_np = samples.detach().cpu().numpy()
+    x, y = samples_np[:, 0], samples_np[:, 1]
+
+    if ax is None: 
+        ax = plt.gca()   
+        
+    cmap_array = cm.get_cmap(cmap)
+    dark_color = cmap_array(0)  # cmap values go from 0 (darkest) to 1 (lightest)
+    ax.set_facecolor(dark_color)   # extend backgroudn since not everything is filled for some reason?!
+
+    sns.kdeplot(
+    x=x, y=y,
+    fill=True,
+    cmap=cmap, # styling to use
+    levels=levels, # amount of contours
+    thresh=thresh, # at what level the conoutrs are drawn
+    )  
+    ax.set_title(title, fontsize=14)
+    ax.axis("equal")
 
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
 
-    plt.show()
+
+
+def make_grid(
+    x_bounds: tuple[float, float],
+    y_bounds: tuple[float, float],
+    bins: int,
+    x_offset: float = 0.0,
+    device: Optional[torch.device] = None
+):
+    x = torch.linspace(x_bounds[0], x_bounds[1], bins)
+    y = torch.linspace(y_bounds[0], y_bounds[1], bins)
+    if device:
+        x = x.to(device)
+        y = y.to(device)
+    x = x + x_offset
+    X, Y = torch.meshgrid(x, y, indexing='ij')
+    grid = torch.stack([X.reshape(-1), Y.reshape(-1)], dim=-1)
+    return X, Y, grid
     
-#todo nice plotting
+    
+def plot_logDensity(density : LogDensity, bins : int, x : tuple[float, float], y : tuple[float, float], ax : Optional[plt.Axes] = None, offset : float = 0.0, device: Optional[torch.device] = None, **kwargs):
+    ax = plt.gca() if ax is None else ax
+    X, Y, xy = make_grid(x, y, bins, offset, device)
+    Z = density.log_density(xy).reshape(bins, bins).T
+    ax.imshow(Z.cpu(), extent=[*x, *y], origin='lower', **kwargs)

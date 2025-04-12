@@ -7,16 +7,23 @@ class BasicMLP(nn.Module):
     """
     Basic MLP used to approximate the target vector field in flow models.
     """
-    def __init__(self, input_dim : int, hidden_dims : list[int]):
+    def __init__(self, input_dim : int, hidden_dims : list[int], conditional : bool = False):
         """
         Args:
             input_dim (int): input dim of nn
             hidden_dims (list[int]): list of hidden dimensions, including output dim
         """
         super().__init__()
+        self.conditional = conditional
+        
         if len(hidden_dims) == 0:
             raise ValueError("Hidden dims list must be non-empty")
-        self.mlp = nn.Sequential(nn.Linear(input_dim+1, hidden_dims[0]))
+        
+        extra = 0
+        if conditional:
+            extra = input_dim
+        
+        self.mlp = nn.Sequential(nn.Linear(input_dim+1+extra, hidden_dims[0]))
         
         if len(hidden_dims) - 2 > 0:
             self.mlp.add_module("0Activation",nn.SiLU())
@@ -28,7 +35,7 @@ class BasicMLP(nn.Module):
         
         self.mlp.add_module("OutLayer", nn.Linear(hidden_dims[-1],input_dim))
         
-    def forward(self, x : torch.Tensor, t : torch.Tensor) -> torch.Tensor:
+    def forward(self, x : torch.Tensor, t : torch.Tensor, y : torch.Tensor = None) -> torch.Tensor:
         """
         Forward pass of layer to appprox vector field
 
@@ -39,6 +46,12 @@ class BasicMLP(nn.Module):
         Returns:
             torch.Tensor: approx of vectorfield
         """
+        
+        if self.conditional:
+            if y:
+                return self.mlp(torch.concat([x,t,y],dim=-1))
+            else:
+                raise ValueError("For a conditional MLP provide a conditional")
         return self.mlp(torch.concat([x,t],dim=-1))
     
 
@@ -198,8 +211,7 @@ class FlowDiffTrainer(BasicTrainer):
             raise ValueError("Type not Supported, either FlowMatching or Diffusion")
         
         return F.mse_loss(u_theta,label)
-        
-
+    
 """
 Noise predictor in the case of gaussian probability paths, only varies from the above case in the gaussian case by constants, use "noise" when sampling using this
 """        
@@ -218,3 +230,80 @@ class NoisePredictorTrainer(BasicTrainer):
         
         noise_pred = self.model(x_t,t)
         return F.mse_loss(noise_pred,eps)
+
+
+    #TODO: Basic playing around with guidance!
+
+class DiffusionGuidanceTrainer(BasicTrainer):
+    def __init__(self, path : ConditionalProbabilityPath, model,con_prob : float, optimizer = torch.optim.Adam, lr = 0.01):
+        super().__init__(model, optimizer, lr)
+        self.path = path
+        self.con_prob = con_prob
+    
+    def get_loss(self, n):
+        x = self.path.p_data.sample(n)  # Data to generate
+        y = self.path.p_data.sample(n)  # Use another datapoint as the "guidance"
+
+        t = torch.rand(n, 1).to(x)
+        x_t = self.path.sample_conditional_path(x, t)
+
+        # Classifier-free guidance: randomly drop conditioning
+        drop_mask = (torch.rand(n, 1, device=x.device) < self.p_uncond)
+        y_masked = y.clone()
+        y_masked[drop_mask.squeeze()] = 0.0
+
+        # Model predicts noise or score, conditioned on y or not
+        pred = self.model(x_t, t, y_masked)
+
+        # Ground truth score or noise (depending on your diffusion setup)
+        target = self.path.conditional_score(x, t)
+
+        return F.mse_loss(pred, target)
+    
+class GuidanceLangevin(SDE):
+    def __init__(
+        self,
+        score_model: BasicMLP,
+        alpha: Alpha,
+        beta: Beta,
+        sigma: float,
+        model_type="score",
+        guidance_scale=0.0,  # 0.0 = unconditional; >0 = guided
+    ):
+        super().__init__()
+        self.score = score_model
+        self.beta = beta
+        self.alpha = alpha
+        self.sigma = sigma
+        self.type = model_type
+        self.guidance_scale = guidance_scale
+
+    def guided_score(self, x_t: torch.Tensor, t: torch.Tensor, y: torch.Tensor | None) -> torch.Tensor:
+        if y is None or self.guidance_scale == 0.0:
+            return self.score(x_t, t)  # unconditional
+
+        # Create "null" conditioning (zeros)
+        y_null = torch.zeros_like(y)
+
+        eps_cond = self.score(x_t, t, y)
+        eps_uncond = self.score(x_t, t, y_null)
+
+        return eps_uncond + self.guidance_scale * (eps_cond - eps_uncond)
+
+    def drift(self, x_t: torch.Tensor, t: torch.Tensor, y: torch.Tensor | None = None) -> torch.Tensor:
+        score = self.guided_score(x_t, t, y)
+        beta_t = self.beta(t)
+        beta_dt = self.beta.dt(t)
+        alpha_t = self.alpha(t)
+        alpha_dt = self.alpha.dt(t)
+
+        if self.type == "noise":
+            score = score / -beta_t
+
+        return (
+            (beta_t**2 * alpha_dt / alpha_t - beta_dt * beta_t + self.sigma**2 / 2) * score
+            + (alpha_dt / alpha_t) * x_t
+        )
+
+    def diffusion(self, x_t: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        return self.sigma * torch.randn_like(x_t)
