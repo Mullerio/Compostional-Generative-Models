@@ -239,8 +239,6 @@ class NoisePredictorTrainer(BasicTrainer):
         return F.mse_loss(noise_pred,eps)
 
 
-    #TODO: Basic playing around with guidance!
-
 class DiffusionGuidanceTrainer(BasicTrainer):
     def __init__(self, path : ConditionalProbabilityPath, model,p_uncond : float, optimizer = torch.optim.Adam, lr = 0.01):
         super().__init__(model, optimizer, lr)
