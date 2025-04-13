@@ -49,20 +49,20 @@ class EulerODESolver(Solver):
     def __init__(self, ode : ODE):
         self.ode = ode
 
-    def step(self, x_t : torch.Tensor, t : torch.Tensor, dt : torch.Tensor) -> torch.Tensor:
+    def step(self, x_t : torch.Tensor, t : torch.Tensor, dt : torch.Tensor, **kwargs) -> torch.Tensor:
         
-        drift = self.ode.drift(x_t,t)
+        drift = self.ode.drift(x_t,t, **kwargs)
         return x_t + dt * drift
 
 class EulerSDESolver(Solver):
     """
-    Euler-Maruyama solver for SDEs
+    Euler-Maruyama solver for SDEs, also allowing samples with guidance at inference or other additional arguments for the ODE
     """
     def __init__(self, sde: SDE):
         super().__init__()
         self.sde = sde
 
-    def step(self, x_t: torch.Tensor, t: torch.Tensor, dt: torch.Tensor) -> torch.Tensor:
+    def step(self, x_t: torch.Tensor, t: torch.Tensor, dt: torch.Tensor, **kwargs) -> torch.Tensor:
         """
         Args:
             x_t: [batch_size, dim]
@@ -73,8 +73,8 @@ class EulerSDESolver(Solver):
         """
         dw = torch.randn_like(x_t) * torch.sqrt(dt)
         
-        drift = self.sde.drift(x_t, t) * dt
-        diffusion = self.sde.diffusion(x_t, t) * dw 
+        drift = self.sde.drift(x_t, t, **kwargs) * dt
+        diffusion = self.sde.diffusion(x_t, t, **kwargs) * dw 
         
         next_x = x_t + drift + diffusion
         return next_x

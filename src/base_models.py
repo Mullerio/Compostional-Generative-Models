@@ -48,7 +48,7 @@ class BasicMLP(nn.Module):
         """
         
         if self.conditional:
-            if y:
+            if y is not None:
                 return self.mlp(torch.concat([x,t,y],dim=-1))
             else:
                 raise ValueError("For a conditional MLP provide a conditional")
@@ -56,6 +56,7 @@ class BasicMLP(nn.Module):
     
 
 class VectorFieldODE(ODE):
+    """Wrapper to get ODE out of MLP"""
     def __init__(self, mlp : BasicMLP):
         super().__init__()
         self.mlp = mlp
@@ -64,6 +65,9 @@ class VectorFieldODE(ODE):
         return self.mlp(x_t,t)
 
 class Langevin_withFLow(SDE):
+    """
+    General Langevin SDE given a score and flow model 
+    """
     def __init__(self, eps : float, flow : BasicMLP, score : BasicMLP):
         super().__init__()
         self.eps = eps
@@ -88,6 +92,9 @@ class Langevin_withFLow(SDE):
         return torch.randn_like(x_t) * self.eps 
         
 class Langevin_Schedule(SDE):
+    """
+    For Gaussian paths, the SDE with the flow, given a score approximation, can be derived by hand 
+    """
     def __init__(self, score_model : BasicMLP, alpha : Alpha, beta : Beta, sigma : float, model_type = "score"):
         super().__init__()
         self.score = score_model
@@ -235,28 +242,26 @@ class NoisePredictorTrainer(BasicTrainer):
     #TODO: Basic playing around with guidance!
 
 class DiffusionGuidanceTrainer(BasicTrainer):
-    def __init__(self, path : ConditionalProbabilityPath, model,con_prob : float, optimizer = torch.optim.Adam, lr = 0.01):
+    def __init__(self, path : ConditionalProbabilityPath, model,p_uncond : float, optimizer = torch.optim.Adam, lr = 0.01):
         super().__init__(model, optimizer, lr)
         self.path = path
-        self.con_prob = con_prob
+        self.p_uncond = p_uncond
     
     def get_loss(self, n):
-        x = self.path.p_data.sample(n)  # Data to generate
+        z = self.path.p_data.sample(n)  # Data to generate
         y = self.path.p_data.sample(n)  # Use another datapoint as the "guidance"
 
-        t = torch.rand(n, 1).to(x)
-        x_t = self.path.sample_conditional_path(x, t)
+        t = torch.rand(n, 1).to(z)
+        cond_pt = self.path.sample_conditional_path(z, t)
 
         # Classifier-free guidance: randomly drop conditioning
-        drop_mask = (torch.rand(n, 1, device=x.device) < self.p_uncond)
+        drop_mask = (torch.rand(n, 1, device=cond_pt.device) < self.p_uncond)
         y_masked = y.clone()
         y_masked[drop_mask.squeeze()] = 0.0
 
-        # Model predicts noise or score, conditioned on y or not
-        pred = self.model(x_t, t, y_masked)
+        pred = self.model(cond_pt, t, y_masked)
 
-        # Ground truth score or noise (depending on your diffusion setup)
-        target = self.path.conditional_score(x, t)
+        target = self.path.conditional_score(cond_pt,z,t)
 
         return F.mse_loss(pred, target)
     
@@ -305,5 +310,5 @@ class GuidanceLangevin(SDE):
             + (alpha_dt / alpha_t) * x_t
         )
 
-    def diffusion(self, x_t: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    def diffusion(self, x_t: torch.Tensor, t: torch.Tensor, y: torch.Tensor | None = None) -> torch.Tensor:
         return self.sigma * torch.randn_like(x_t)

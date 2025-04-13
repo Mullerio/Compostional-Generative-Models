@@ -120,8 +120,8 @@ def make_grid(
     return X, Y, grid
     
     
-def plot_logDensity(density : LogDensity, bins : int, x : tuple[float, float], y : tuple[float, float], ax : Optional[plt.Axes] = None, offset : float = 0.0, device: Optional[torch.device] = None, **kwargs):
+def plot_logDensity(density : LogDensity, x_bounds : tuple[float, float], y_bounds : tuple[float, float], bins : int = 100, ax : Optional[plt.Axes] = None, offset : float = 0.0, device: Optional[torch.device] = None, **kwargs):
     ax = plt.gca() if ax is None else ax
-    X, Y, xy = make_grid(x, y, bins, offset, device)
+    X, Y, xy = make_grid(x_bounds, y_bounds, bins, offset, device)
     Z = density.log_density(xy).reshape(bins, bins).T
-    ax.imshow(Z.cpu(), extent=[*x, *y], origin='lower', **kwargs)
+    ax.imshow(Z.cpu(), extent=[*x_bounds, *y_bounds], origin='lower', **kwargs)

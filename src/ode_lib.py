@@ -54,7 +54,7 @@ class Sampler(ABC):
         self.solver = new_solver
             
     @torch.no_grad()
-    def sample_with_traj(self, x_init : torch.tensor, steps : torch.Tensor) -> torch.Tensor: 
+    def sample_with_traj(self, x_init : torch.tensor, steps : torch.Tensor, **kwargs) -> torch.Tensor: 
         """
         Sample the ODE using the given Solver of the Sampler Class and store its trajectory
 
@@ -74,14 +74,14 @@ class Sampler(ABC):
         for t in range(1, number_timesteps):
             step_now = steps[t]
             dt = step_now - step_before
-            x = self.solver.step(x, step_now, dt)
+            x = self.solver.step(x, step_now, dt, **kwargs)
             traj[t] = x
             step_before = step_now
 
         return traj
     
     @torch.no_grad()
-    def sample_without_traj(self, x_init : torch.tensor, steps : torch.Tensor) -> torch.Tensor: 
+    def sample_without_traj(self, x_init : torch.tensor, steps : torch.Tensor, **kwargs) -> torch.Tensor: 
         """
         Sample the ODE using the given Solver of the Sampler Class without storing the entire trajectory
 
@@ -95,8 +95,8 @@ class Sampler(ABC):
         x = x_init
         for t_idx in range(len(steps) - 1):
             t = steps[:, t_idx]
-            h = steps[:, t_idx + 1] - steps[:, t_idx]
-            x = self.solver.step(x, t, h)
+            dt = steps[:, t_idx + 1] - steps[:, t_idx]
+            x = self.solver.step(x, t, dt, **kwargs)
         return x
         
         

@@ -1,7 +1,7 @@
 from .base_models import *
 
 
-
+"""Basic Compositional SDEs/Models/Ideas etc. allowing for sampling from the product of distributions where  we have already learned models"""
 class CompLangevin(SDE):
     def __init__(self, models : list[BasicMLP],  sigma : float, alpha = Alpha, beta = Beta):
         super().__init__()
