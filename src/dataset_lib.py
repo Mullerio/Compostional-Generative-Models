@@ -159,7 +159,24 @@ class TwoMoons2D(SampleDensity):
         x, _ = make_moons(n_samples=n, noise=self.noise)
         x = torch.tensor(x, dtype=torch.float32)
         return apply_affine_2d(x, self.scale, self.rotation, self.offset).to(self.device)
-    
+
+
+
+class RectangleDataset(SampleDensity):
+    def __init__(self, device : torch.device, x_coords : tuple[int,int] = (0,1), y_coords : tuple[int,int] = (0,1), rotation=0.0):
+        self.device = device
+        self.x = x_coords
+        self.y = y_coords
+        self.rotation = rotation
+
+    @property
+    def dim(self) -> int:
+        return 2
+
+    def sample(self, n: int) -> torch.Tensor:
+        x = torch.empty(n).uniform_(self.x[0], self.x[1])
+        y = torch.empty(n).uniform_(self.y[0], self.y[1])
+        return apply_affine_2d(torch.stack([x,y],  dim=1), rotation=self.rotation).to(self.device)
 
 if __name__ == "__main__":
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
