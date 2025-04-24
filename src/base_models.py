@@ -7,7 +7,7 @@ class BasicMLP(nn.Module):
     """
     Basic MLP used to approximate the target vector field in flow models.
     """
-    def __init__(self, input_dim : int, hidden_dims : list[int], conditional : bool = False):
+    def __init__(self, input_dim : int, hidden_dims : list[int], conditional : bool = False, conditional_dim : int = 2):
         """
         Args:
             input_dim (int): input dim of nn
@@ -21,19 +21,18 @@ class BasicMLP(nn.Module):
         
         extra = 0
         if conditional:
-            extra = input_dim
-        
-        self.mlp = nn.Sequential(nn.Linear(input_dim+1+extra, hidden_dims[0]))
-        
-        if len(hidden_dims) - 2 > 0:
-            self.mlp.add_module("0Activation",nn.SiLU())
+            extra = conditional_dim
             
-        for i in range(len(hidden_dims)-1):
-            self.mlp.add_module(f"Layer{i+1}",nn.Linear(hidden_dims[i], hidden_dims[i+1]))
-            if len(hidden_dims) - i - 2> 0:
-                self.mlp.add_module(f"Activation{i+1}",nn.SiLU())
-        
-        self.mlp.add_module("OutLayer", nn.Linear(hidden_dims[-1],input_dim))
+        layers = []
+        current_dim = input_dim + 1 + extra  # x + t + cond_embed
+        for i, h in enumerate(hidden_dims):
+            layers.append(nn.Linear(current_dim, h))
+            if i < len(hidden_dims) - 1:
+                layers.append(nn.SiLU())
+            current_dim = h
+        layers.append(nn.Linear(current_dim, input_dim))  # output vector field
+
+        self.mlp = nn.Sequential(*layers)
         
     def forward(self, x : torch.Tensor, t : torch.Tensor, y : torch.Tensor = None) -> torch.Tensor:
         """
@@ -239,74 +238,3 @@ class NoisePredictorTrainer(BasicTrainer):
         return F.mse_loss(noise_pred,eps)
 
 
-class DiffusionGuidanceTrainer(BasicTrainer):
-    def __init__(self, path : ConditionalProbabilityPath, model,p_uncond : float, optimizer = torch.optim.Adam, lr = 0.01):
-        super().__init__(model, optimizer, lr)
-        self.path = path
-        self.p_uncond = p_uncond
-    
-    def get_loss(self, n):
-        z = self.path.p_data.sample(n)  # Data to generate
-        y = self.path.p_data.sample(n)  # Use another datapoint as the "guidance"
-
-        t = torch.rand(n, 1).to(z)
-        cond_pt = self.path.sample_conditional_path(z, t)
-
-        # Classifier-free guidance: randomly drop conditioning
-        drop_mask = (torch.rand(n, 1, device=cond_pt.device) < self.p_uncond)
-        y_masked = y.clone()
-        y_masked[drop_mask.squeeze()] = 0.0
-
-        pred = self.model(cond_pt, t, y_masked)
-
-        target = self.path.conditional_score(cond_pt,z,t)
-
-        return F.mse_loss(pred, target)
-    
-class GuidanceLangevin(SDE):
-    def __init__(
-        self,
-        score_model: BasicMLP,
-        alpha: Alpha,
-        beta: Beta,
-        sigma: float,
-        model_type="score",
-        guidance_scale=0.0,  # 0.0 = unconditional; >0 = guided
-    ):
-        super().__init__()
-        self.score = score_model
-        self.beta = beta
-        self.alpha = alpha
-        self.sigma = sigma
-        self.type = model_type
-        self.guidance_scale = guidance_scale
-
-    def guided_score(self, x_t: torch.Tensor, t: torch.Tensor, y: torch.Tensor | None) -> torch.Tensor:
-        if y is None or self.guidance_scale == 0.0:
-            return self.score(x_t, t)  # unconditional
-
-        # Create "null" conditioning (zeros)
-        y_null = torch.zeros_like(y)
-
-        eps_cond = self.score(x_t, t, y)
-        eps_uncond = self.score(x_t, t, y_null)
-
-        return eps_uncond + self.guidance_scale * (eps_cond - eps_uncond)
-
-    def drift(self, x_t: torch.Tensor, t: torch.Tensor, y: torch.Tensor | None = None) -> torch.Tensor:
-        score = self.guided_score(x_t, t, y)
-        beta_t = self.beta(t)
-        beta_dt = self.beta.dt(t)
-        alpha_t = self.alpha(t)
-        alpha_dt = self.alpha.dt(t)
-
-        if self.type == "noise":
-            score = score / -beta_t
-
-        return (
-            (beta_t**2 * alpha_dt / alpha_t - beta_dt * beta_t + self.sigma**2 / 2) * score
-            + (alpha_dt / alpha_t) * x_t
-        )
-
-    def diffusion(self, x_t: torch.Tensor, t: torch.Tensor, y: torch.Tensor | None = None) -> torch.Tensor:
-        return self.sigma * torch.randn_like(x_t)

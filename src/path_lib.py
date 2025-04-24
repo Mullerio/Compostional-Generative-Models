@@ -10,10 +10,12 @@ class ConditionalProbabilityPath(torch.nn.Module, ABC):
     """
     Abstract base class for conditional probability paths.
     """
-    def __init__(self, p_init: SampleDensity, p_data: SampleDensity):
+    def __init__(self, p_init: SampleDensity, p_data: SampleDensity, device = 'cuda'):
         super().__init__()
         self.p_init = p_init
         self.p_data = p_data
+        self.device = device
+            
 
     def sample_marginal_path(self, t: torch.Tensor) -> torch.Tensor:
         """

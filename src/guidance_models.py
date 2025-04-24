@@ -1,0 +1,265 @@
+from .base_models import *
+import random
+
+"""Basic MLP where we embed the guidance parameter to some higher dimension for better learning"""
+
+class EmbeddedBasicMLP(nn.Module):
+    def __init__(self, input_dim: int, hidden_dims: list[int], conditional: bool = False, 
+                 num_conditions: int = None, embedding_dim: int = None):
+        """
+        Args:
+            input_dim: dimension of x
+            hidden_dims: list of hidden layer sizes
+            conditional: whether to use conditional input
+            num_conditions: number of discrete conditions (clusters)
+            embedding_dim: size of the embedding vectors (can be used for guidance)
+        """
+        super().__init__()
+        self.conditional = conditional
+
+        if conditional:
+            assert num_conditions is not None and embedding_dim is not None, "For conditional, provide num_conditions and embedding_dim"
+            self.embed = nn.Embedding(num_conditions, embedding_dim)
+            cond_dim = embedding_dim
+        else:
+            cond_dim = 0
+
+        layers = []
+        current_dim = input_dim + 1 + cond_dim  
+        for i, h in enumerate(hidden_dims):
+            layers.append(nn.Linear(current_dim, h))
+            if i < len(hidden_dims) - 1:
+                layers.append(nn.SiLU())
+            current_dim = h
+        layers.append(nn.Linear(current_dim, input_dim)) 
+
+        self.mlp = nn.Sequential(*layers)    
+
+    def forward(self, x: torch.Tensor, t: torch.Tensor, y_index: torch.Tensor = None) -> torch.Tensor:
+        """
+        Args:
+            x: [batch, input_dim]
+            t: [batch, 1]
+            y_index: [batch] (long) -- index of conditioning cluster 
+        """
+        if self.conditional:
+            if y_index is None:
+                raise ValueError("Conditional model requires y_index")
+            if y_index.dim() == 2:  # make sure y_index is shape [B], not [B,1]
+                y_index = y_index.squeeze(-1)
+            y_embed = self.embed(y_index)  # [batch, embedding_dim]
+            input_tensor = torch.cat([x, t, y_embed], dim=-1)
+        else:
+            input_tensor = torch.cat([x, t], dim=-1)
+
+        return self.mlp(input_tensor)     
+    
+    def get_all_conditioning_centers(self) -> torch.Tensor:
+        """
+        Returns the current approximation of all conditioning centers 
+        corresponding to each embedding index.
+
+        Returns:
+            Tensor of shape [num_centers, data_dim]
+        """
+        if self.conditional is None: 
+            raise ValueError("Cannot call get_all_conditioning_centers if Model is not conditional")
+        
+        with torch.no_grad():
+            embeddings = self.embed.weight  
+            centers = self.embedding_to_center(embeddings)  # [num_centers, data_dim]
+        return centers
+
+
+class CenterGuidanceTrainerOLD(BasicTrainer):
+    def __init__(self, path: ConditionalProbabilityPath, model, p_uncond: float, 
+                 optimizer=torch.optim.Adam, lr=0.01, model_type="FM", num_conditions=None, null_idx=0):
+        super().__init__(model, optimizer, lr)
+        assert model_type in ["FM", "Flow Matching", "Diff", "Diffusion"], "Model type not implemented"
+        self.path = path
+        self.p_uncond = p_uncond
+        self.type = model_type
+        self.num_conditions = num_conditions
+        self.null_idx = null_idx  # index used for unconditional pass
+
+    def get_loss(self, n):
+        z = self.path.p_data.sample(n)  # target data
+        t = torch.rand(n, 1).to(z)
+
+        # Sample conditioning indices (as integers)
+        y_index = torch.randint(0, self.num_conditions, (n,), device=z.device)  # [n]
+        
+        # Sample conditional path from centers
+        cond_pt = self.path.sample_conditional_path(z, t)
+
+        # Apply classifier-free guidance dropout
+        drop_mask = (torch.rand(n, device=z.device) < self.p_uncond)  # shape [n]
+        y_masked = y_index.clone()
+        y_masked[drop_mask] = self.null_idx  # set to "unconditional" index
+
+        # Forward pass with masked y
+        pred = self.model(cond_pt, t, y_masked)
+
+        # Target vector field
+        if self.type in ["FM", "Flow Matching"]:
+            target = self.path.conditional_vector_field(cond_pt, z, t)
+        elif self.type in ["Diff", "Diffusion"]:
+            target = self.path.conditional_score(cond_pt, z, t)
+        else:
+            raise ValueError("Model type not implemented")
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+
+        return F.mse_loss(pred, target)
+
+class GuidedVectorFieldOLD(ODE):
+    def __init__(self, model: BasicMLP, guidance_scale: float, null_index: int):
+        super().__init__()
+        self.model = model
+        self.guidance_scale = guidance_scale
+        self.null_index = null_index
+
+    def drift(self, x_t: torch.Tensor, t: torch.Tensor, y_index: torch.Tensor) -> torch.Tensor:
+        # y_index: [batch] of integers
+        uncond = self.model(x_t, t, torch.full_like(y_index, self.null_index))  # unconditional
+        cond = self.model(x_t, t, y_index)  # conditional
+        
+        guidance_scale = self.guidance_scale
+
+        return (1 - guidance_scale) * uncond + guidance_scale * cond
+
+
+
+
+"""Guidance, for when we know the means or approximate them as cluster centers from data, not using embeddings but learning the null center, does not work too well"""
+
+class CenterGuidanceTrainer(BasicTrainer):
+    def __init__(self, path : ConditionalProbabilityPath, model,p_uncond : float, optimizer = torch.optim.Adam, lr = 0.01, model_type : str = "FM", centers : list[torch.Tensor] = None, null_index : int = None):
+        super().__init__(model, optimizer, lr)
+        assert model_type == "FM" or model_type == "Flow Matching" or model_type == "Diff" or model_type == "Diffusion", "Model type not implemented"
+        self.path = path
+        self.p_uncond = p_uncond
+        self.type = model_type
+        self.centers = centers
+        if null_index is None: 
+            self.null_index = len(centers)
+        else:
+            self.null_index = null_index
+    
+    def get_loss(self, n):
+        z = self.path.p_data.sample(n)  # Data to generate
+        # generate random samples from the centers, we add some noise to have guidance over a larger part of the cluster
+        #y = (torch.stack([random.choice(self.centers) for _ in range(n)]).squeeze() + torch.randn_like(z)).to(self.path.device)
+        #y = (torch.stack([random.choice(self.centers) for _ in range(n)]).squeeze()).to(self.path.device)
+        t = torch.rand(n, 1).to(z)
+        y = self.classify(z)
+        
+        cond_pt = self.path.sample_conditional_path(z, t)
+
+        # Classifier-free guidance: randomly drop conditioning, i.e set to 0, might also be useful to consider other "zero" conditioning
+        #drop_mask = (torch.rand(n, 1, device=cond_pt.device) < self.p_uncond)
+        #y_masked = y.clone()
+        
+        #take y_masked to be the learned null cluster with probability p_uncond, since we do this batched, need to expand_as
+        #y_masked[drop_mask.squeeze()] = 0.0
+        
+        drop_mask = (torch.rand(n, 1, device=z.device) < self.p_uncond).squeeze(-1)  # [batch]
+        y_masked = y.clone()
+        y_masked[drop_mask] = self.null_index
+        
+        
+        pred = self.model(cond_pt, t, y_masked)
+
+        if self.type == "FM" or self.type == "Flow Matching":
+            target = self.path.conditional_vector_field(cond_pt,z,t)
+        elif self.type == "Diff" or self.type == "Diffusion":
+            target = self.path.conditional_score(cond_pt,z,t)
+        else:
+            raise ValueError("Model type not implemented")
+
+        return F.mse_loss(pred, target)     
+    
+    def classify(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Assigns each point in x to the index of its closest center.
+
+        Args:
+            x: [batch_size, data_dim]
+
+        Returns:
+            indices: [batch_size] long tensor of center indices
+        """
+        dists = torch.cdist(x, torch.stack(self.centers))  # [batch_size, num_centers]
+        return torch.argmin(dists, dim=1)
+    
+
+class GuidedVectorField(ODE):
+    def __init__(self, model: nn.Module, guidance_scale: float, null_index: int):
+        super().__init__()
+        self.model = model
+        self.guidance_scale = guidance_scale
+        self.null_index = null_index
+
+    def drift(self, x_t: torch.Tensor, t: torch.Tensor, y_index: torch.Tensor):
+        null_indices = torch.full_like(y_index, self.null_index)
+
+        return ((1 - self.guidance_scale) * self.model(x_t, t, null_indices) + self.guidance_scale * self.model(x_t, t, y_index))
+    
+    
+class GuidedVectorFieldOLD2(ODE):
+    def __init__(self, model : nn.Module, guidance_scale : float, null_center : torch.Tensor):
+        super().__init__()
+        self.model = model
+        self.guidance_scale = guidance_scale
+        self.null_center = null_center # given null center, non batched
+        
+    def drift(self, x_t : torch.Tensor, t : torch.Tensor, y : torch.Tensor):
+        return (1-self.guidance_scale) * self.model(x_t,t,self.null_center.expand_as(x_t)) + self.guidance_scale * self.model(x_t,t,y)
+
+    
+"""General Guidance trainer, does not work too well without better *guidance*"""
+class GuidanceTrainer(BasicTrainer):
+    def __init__(self, path : ConditionalProbabilityPath, model,p_uncond : float, optimizer = torch.optim.Adam, lr = 0.01, model_type : str = "FM"):
+        super().__init__(model, optimizer, lr)
+        assert model_type == "FM" or model_type == "Flow Matching" or model_type == "Diff" or model_type == "Diffusion", "Model type not implemented"
+        self.path = path
+        self.p_uncond = p_uncond
+        self.type = model_type
+    
+    def get_loss(self, n):
+        z = self.path.p_data.sample(n)  # Data to generate
+        y = self.path.p_data.sample(n)  # Use another datapoint as the "guidance"
+
+        t = torch.rand(n, 1).to(z)
+        cond_pt = self.path.sample_conditional_path(z, t)
+
+        # Classifier-free guidance: randomly drop conditioning
+        drop_mask = (torch.rand(n, 1, device=cond_pt.device) < self.p_uncond)
+        y_masked = y.clone()
+        y_masked[drop_mask.squeeze()] = 0.0
+
+        pred = self.model(cond_pt, t, y_masked)
+
+        if self.type == "FM" or self.type == "Flow Matching":
+            target = self.path.conditional_vector_field(cond_pt,z,t)
+        elif self.type == "Diff" or self.type == "Diffusion":
+            target = self.path.conditional_score(cond_pt,z,t)
+
+        return F.mse_loss(pred, target)
+
+
+    def forward(self, x: torch.Tensor, t: torch.Tensor, y_index: torch.Tensor = None) -> torch.Tensor:
+        """
+        Args:
+            x: [batch, input_dim]
+            t: [batch, 1]
+            y_index: [batch] (long) -- index of conditioning cluster
+        """
+        if self.conditional:
+            if y_index is None:
+                raise ValueError("Conditional model requires y_index")
+            y_embed = self.embed(y_index)  # [batch, embedding_dim]
+            input_tensor = torch.cat([x, t, y_embed], dim=-1)
+        else:
+            input_tensor = torch.cat([x, t], dim=-1)
+
+        return self.mlp(input_tensor)

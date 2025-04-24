@@ -1,5 +1,6 @@
 import torch
 from abc import ABC, abstractmethod
+from tqdm import tqdm
 
 """Basic abstract classes for ODEs/SDEs using Torch, adapted from the labs of MIT CS 6.S184 by Peter Holderrieth and Ezra Erives."""
 
@@ -60,25 +61,44 @@ class Sampler(ABC):
 
         Args:
             x_init (torch.tensor): initial state at t_start [batch_size, dim]
-            steps (torch.Tensor): steps[i] == timestep we sample at step i [number_timesteps]
+            steps (torch.Tensor): [batch_size,number_timesteps,1]
 
         Returns:
-            torch.Tensor: trajectory of ODE [number_timesteps, dim]
-        """
+            torch.Tensor: trajectory of ODE [number_timesteps, batch_size, dim]
+        """    
         number_timesteps = len(steps)
         traj = torch.zeros((number_timesteps, *x_init.shape), dtype=x_init.dtype, device=x_init.device)
         traj[0] = x_init
-
         x = x_init
-        step_before = steps[0]
-        for t in range(1, number_timesteps):
-            step_now = steps[t]
-            dt = step_now - step_before
+        for idx in range(len(steps) - 1):
+            step_now = steps[:, idx]
+            dt = steps[:, idx + 1] - steps[:, idx]
             x = self.solver.step(x, step_now, dt, **kwargs)
-            traj[t] = x
-            step_before = step_now
+            traj[idx+1] = x.clone() #dont pass reference,store current x
 
         return traj
+    
+    
+    
+    @torch.no_grad()
+    def simulate_with_trajectory(self, x: torch.Tensor, ts: torch.Tensor):
+        """
+        Simulates using the discretization gives by ts
+        Args:
+            - x_init: initial state at time ts[0], shape (bs, dim)
+            - ts: timesteps, shape (bs, num_timesteps, 1)
+        Returns:
+            - xs: trajectory of xts over ts, shape (batch_size, num
+            _timesteps, dim)
+        """
+        xs = [x.clone()]
+        nts = ts.shape[1]
+        for t_idx in tqdm(range(nts - 1)):
+            t = ts[:,t_idx]
+            h = ts[:, t_idx + 1] - ts[:, t_idx]
+            x = self.solver.step(x, t, h)
+            xs.append(x.clone())
+        return torch.stack(xs, dim=1)
     
     @torch.no_grad()
     def sample_without_traj(self, x_init : torch.tensor, steps : torch.Tensor, **kwargs) -> torch.Tensor: 
@@ -93,9 +113,9 @@ class Sampler(ABC):
             torch.Tensor: final timestep [dim]
         """
         x = x_init
-        for t_idx in range(len(steps) - 1):
-            t = steps[:, t_idx]
-            dt = steps[:, t_idx + 1] - steps[:, t_idx]
+        for idx in range(len(steps) - 1):
+            t = steps[:, idx]
+            dt = steps[:, idx + 1] - steps[:, idx]
             x = self.solver.step(x, t, dt, **kwargs)
         return x
         
