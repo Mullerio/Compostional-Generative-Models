@@ -53,22 +53,6 @@ class EmbeddedBasicMLP(nn.Module):
             input_tensor = torch.cat([x, t], dim=-1)
 
         return self.mlp(input_tensor)     
-    
-    def get_all_conditioning_centers(self) -> torch.Tensor:
-        """
-        Returns the current approximation of all conditioning centers 
-        corresponding to each embedding index.
-
-        Returns:
-            Tensor of shape [num_centers, data_dim]
-        """
-        if self.conditional is None: 
-            raise ValueError("Cannot call get_all_conditioning_centers if Model is not conditional")
-        
-        with torch.no_grad():
-            embeddings = self.embed.weight  
-            centers = self.embedding_to_center(embeddings)  # [num_centers, data_dim]
-        return centers
 
 
 class CenterGuidanceTrainerOLD(BasicTrainer):
@@ -204,18 +188,39 @@ class GuidedVectorField(ODE):
 
         return ((1 - self.guidance_scale) * self.model(x_t, t, null_indices) + self.guidance_scale * self.model(x_t, t, y_index))
     
-    
-class GuidedVectorFieldOLD2(ODE):
-    def __init__(self, model : nn.Module, guidance_scale : float, null_center : torch.Tensor):
-        super().__init__()
-        self.model = model
-        self.guidance_scale = guidance_scale
-        self.null_center = null_center # given null center, non batched
-        
-    def drift(self, x_t : torch.Tensor, t : torch.Tensor, y : torch.Tensor):
-        return (1-self.guidance_scale) * self.model(x_t,t,self.null_center.expand_as(x_t)) + self.guidance_scale * self.model(x_t,t,y)
 
+
+"""Basic Diffusion Guidance"""
+class GuidedLangevin_withSchedule(SDE):
+    def __init__(self, score_model : BasicMLP, alpha : Alpha, beta : Beta, sigma : float, guidance_scale : float, null_index : int,model_type = "score"):
+        super().__init__()
+        self.score = score_model
+        self.beta = beta
+        self.alpha = alpha
+        self.sigma = sigma
+        self.type = model_type
+        self.guidance_scale = guidance_scale
+        self.null_index = null_index
+
+
+    def drift(self, x_t : torch.Tensor, t : torch.Tensor, y_index : torch.Tensor) -> torch.Tensor:
+        null_indices = torch.full_like(y_index, self.null_index)
+
+        score = ((1 - self.guidance_scale) * self.score(x_t, t, null_indices) + self.guidance_scale * self.score(x_t, t, y_index))
+        beta_t = self.beta(t)
+        if self.type == "noise":
+            score = score/-beta_t
+        beta_dt = self.beta.dt(t)
+        alpha_t = self.alpha(t) 
+        alpha_dt = self.alpha.dt(t)
+
+        return  (beta_t**2 * alpha_dt/alpha_t - beta_dt* beta_t+ self.sigma**2/2 ) * score+ alpha_dt/alpha_t *x_t
     
+    def diffusion(self, x_t : torch.Tensor, t : torch.Tensor, y_index : torch.Tensor) -> torch.Tensor:
+        
+        return self.sigma * torch.randn_like(x_t)
+    
+
 """General Guidance trainer, does not work too well without better *guidance*"""
 class GuidanceTrainer(BasicTrainer):
     def __init__(self, path : ConditionalProbabilityPath, model,p_uncond : float, optimizer = torch.optim.Adam, lr = 0.01, model_type : str = "FM"):
