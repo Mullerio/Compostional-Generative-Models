@@ -162,21 +162,50 @@ class TwoMoons2D(SampleDensity):
 
 
 
+def union_sample(SampleDensity):
+    def __init__(self, densities):
+        self.densities = densities
+        
+    @property
+    def dim(self) -> int:
+        return self.densities[0].dim() 
+    
+    def sample(self, n: int) -> torch.Tensor:
+        num_densities = len(self.densities)
+        choices = torch.randint(0, num_densities, size=(n,))  # [n] index of all densities to sample from
+
+        counts = torch.bincount(choices, minlength=num_densities)  # [num_densities] how many times each density was chosen
+
+        # Sample from each density separately
+        samples = []
+        for idx, count in enumerate(counts):
+            if count > 0:
+                samples.append(self.densities[idx].sample(count))
+
+        return torch.cat(samples, dim=0)
+
+    
+
 class RectangleDataset(SampleDensity):
-    def __init__(self, device : torch.device, x_coords : tuple[int,int] = (0,1), y_coords : tuple[int,int] = (0,1), rotation=0.0):
+    def __init__(self, device : torch.device,  coords : list[tuple[float, float]], rotation=0.0):
         self.device = device
-        self.x = x_coords
-        self.y = y_coords
+        self.coords = coords
         self.rotation = rotation
+        if len(coords) >= 3 and rotation != 0.0:
+            raise ValueError("rotation of more than 2d datasets not implemented")
 
     @property
     def dim(self) -> int:
-        return 2
+        return len(self.coords)
 
     def sample(self, n: int) -> torch.Tensor:
-        x = torch.empty(n).uniform_(self.x[0], self.x[1])
-        y = torch.empty(n).uniform_(self.y[0], self.y[1])
-        return apply_affine_2d(torch.stack([x,y],  dim=1), rotation=self.rotation).to(self.device)
+        boundaries = []
+        for coord in self.coords:
+            x = torch.empty(n).uniform_(coord[0], coord[1])
+            boundaries.append(x)
+        if self.dim > 2: 
+            return torch.stack(boundaries, dim = 1)
+        return apply_affine_2d(torch.stack(boundaries,  dim=1), rotation=self.rotation).to(self.device)
 
 if __name__ == "__main__":
     device = 'cuda' if torch.cuda.is_available() else 'cpu'

@@ -132,7 +132,7 @@ class BasicTrainer(ABC):
         Lossfunction for Training
 
         Args:
-            possible args depending on modekl
+            possible args depending on model
         """
         pass
 

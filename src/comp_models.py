@@ -28,7 +28,7 @@ class CompLangevin(SDE):
         
         return self.sigma * torch.randn_like(x_t)
     
-"""General Compositonal Langevin using Guidance for each model, roughly based on https://arxiv.org/abs/2206.01714
+"""General Compositional Langevin using Guidance for each model, roughly based on https://arxiv.org/abs/2206.01714
 in the implementation we also allow for multiple different score models, i am not sure if that is any useful in the conditional case as implement, maybe adaptable to that setting though"""
 class ProductGuidanceLangevin(SDE):
     def __init__(

@@ -1,0 +1,120 @@
+\documentclass{article}
+\usepackage[top=1in, bottom=1in, left=1in, right=1in]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{lmodern}
+\usepackage{bm}
+\usepackage{scrextend}
+%\usepackage{showframe}
+\usepackage{calc}
+\usepackage{changepage}
+\usepackage{mdframed}
+\usepackage{dsfont}
+\usepackage{enumitem}
+\usepackage{pbox}
+\usepackage{setspace}
+\usepackage{stmaryrd}
+\usepackage{setspace}
+\usepackage[table]{xcolor}
+\usepackage{multicol}
+\usepackage{mathtools}
+\usepackage{hanging}
+\usepackage{longtable}
+\usepackage{aligned-overset}
+\usepackage{ntheorem}
+\usepackage{mdframed}
+\usepackage[theorems,breakable]{tcolorbox}%
+
+\allowdisplaybreaks
+\hbadness=10000
+\makeatletter
+\renewcommand*\env@matrix[1][*\c@MaxMatrixCols c]{%
+  \hskip -\arraycolsep
+  \let\@ifnextchar\new@ifnextchar
+  \array{#1}}
+
+\newcommand{\mathleft}{\@fleqntrue\@mathmargin10pt}
+\newcommand{\mathcenter}{\@fleqnfalse}
+\makeatother
+
+\newcommand*{\QED}{\hfill\ensuremath{\square}} 
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\p}{\mathcal{P}}
+\newcommand{\K}{\mathbb{K}}
+\newcommand{\C}{\mathbb{C}}
+\newcommand{\la}{\langle}
+\newcommand{\ra}{\rangle}
+
+
+\newcommand{\bol}[1]{\mathbf{#1}}
+
+
+\newlength{\hangwidth}
+\newcommand{\newhang}[1]{\settowidth{\hangwidth}{#1}\par\hangpara{\hangwidth}{1}#1}
+
+\newcommand{\norm}[1]{\lVert #1 \rVert}
+
+\def\Abstand{1cm}
+
+\newtcbtheorem{lemma}{Lemma}{%
+        theorem name,%
+        colframe=gray,%
+        fonttitle=\bfseries,
+        boxsep=5pt,
+        left=5pt, right=5pt, top=5pt, bottom=5pt
+    }{lem}
+
+\newtcbtheorem{theorem}{Theorem}{
+        theorem name,%
+        colframe=gray,%
+        fonttitle=\bfseries,
+        boxsep=5pt,
+        left=5pt, right=5pt, top=5pt, bottom=5pt
+    }{thm}
+
+\newtcbtheorem{definition}{Definition}{
+      theorem name,%
+      colframe=gray,%
+      fonttitle=\bfseries,
+      boxsep=5pt,
+      left=5pt, right=5pt, top=5pt, bottom=5pt
+  }{def}
+
+\title{Compositional Generative Modeling}
+\author{ }
+\date{}
+
+
+\begin{document}
+
+
+\maketitle
+
+\newlength\breite
+\setlength\breite{\linewidth-4pt}
+\setlength\fboxsep{0pt}
+\setlength\fboxrule{0.25pt}
+\setlength{\abovedisplayskip}{3mm} %Abstand OBEN zw. Text und Formel
+\setlength{\belowdisplayskip}{3mm} %Abstand OBEN zw. Text und Formel
+\setlength\itemsep{0pt}
+\setlength\parindent{0pt}
+
+
+\mathleft
+
+\section*{Introduction}
+
+Generative Models have had tremendous success in recent years, to train them to generalize in complex and changing environments is challenging, which is why compositionality is a desirable property. 
+
+What we want, is for two learned generative models(i.e. Diffusion, Flow Matching etc.), represented by their learned densities $p_{D_1}$ and $p_{D_2}$ on some datasets $D_1$ and $D_2$ to be able to sample from $$p_{comp} \propto p_{D_1} \cdot p_{D_2}$$ where the normalization constant $Z$ given by:
+\[
+Z = \int_{\R^d} p_{D_1}(x) \cdot p_{D_2}(x) \, dx.
+\]
+is not tractable in practice (if we assume data in $\R^d$ which is not too restrictive for now). To do this, multiple naive and more involved ideas exist, which we will try to explore in this document, focussing on toy datasets.
+
+\end{document}

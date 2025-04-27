@@ -113,40 +113,34 @@ class GuidedVectorFieldOLD(ODE):
 
 
 
+"""General guidance trainer, only need to implement a way to classify points to each label"""
 
-"""Guidance, for when we know the means or approximate them as cluster centers from data, not using embeddings but learning the null center, does not work too well"""
-
-class CenterGuidanceTrainer(BasicTrainer):
-    def __init__(self, path : ConditionalProbabilityPath, model,p_uncond : float, optimizer = torch.optim.Adam, lr = 0.01, model_type : str = "FM", centers : list[torch.Tensor] = None, null_index : int = None):
+class GeneralGuidanceTrainer(BasicTrainer):
+    def __init__(self, path : ConditionalProbabilityPath, model,p_uncond : float, num_conditions : int, optimizer = torch.optim.Adam, lr = 0.01, model_type : str = "FM"):
         super().__init__(model, optimizer, lr)
         assert model_type == "FM" or model_type == "Flow Matching" or model_type == "Diff" or model_type == "Diffusion", "Model type not implemented"
         self.path = path
         self.p_uncond = p_uncond
         self.type = model_type
-        self.centers = centers
-        if null_index is None: 
-            self.null_index = len(centers)
-        else:
-            self.null_index = null_index
+        self.labels_amount = num_conditions
+        self.null_index = num_conditions - 1
+   
+    def set_null_index(self, index : int): 
+        """
+        We assume that the highest index is the null index, setter if other null indices are needed
+        """
+        self.null_index = index
     
     def get_loss(self, n):
         z = self.path.p_data.sample(n)  # Data to generate
-        # generate random samples from the centers, we add some noise to have guidance over a larger part of the cluster
-        #y = (torch.stack([random.choice(self.centers) for _ in range(n)]).squeeze() + torch.randn_like(z)).to(self.path.device)
-        #y = (torch.stack([random.choice(self.centers) for _ in range(n)]).squeeze()).to(self.path.device)
         t = torch.rand(n, 1).to(z)
         y = self.classify(z)
         
         cond_pt = self.path.sample_conditional_path(z, t)
 
-        # Classifier-free guidance: randomly drop conditioning, i.e set to 0, might also be useful to consider other "zero" conditioning
-        #drop_mask = (torch.rand(n, 1, device=cond_pt.device) < self.p_uncond)
-        #y_masked = y.clone()
+        # Classifier-free guidance: randomly drop conditioning, i.e set to null_index
         
-        #take y_masked to be the learned null cluster with probability p_uncond, since we do this batched, need to expand_as
-        #y_masked[drop_mask.squeeze()] = 0.0
-        
-        drop_mask = (torch.rand(n, 1, device=z.device) < self.p_uncond).squeeze(-1)  # [batch]
+        drop_mask = (torch.rand(n, 1, device=z.device) < self.p_uncond).squeeze(-1)  
         y_masked = y.clone()
         y_masked[drop_mask] = self.null_index
         
@@ -162,6 +156,32 @@ class CenterGuidanceTrainer(BasicTrainer):
 
         return F.mse_loss(pred, target)     
     
+    @abstractmethod
+    def classify(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Assigns each point in x to the index of its closest center.
+
+        Args:
+            x: [batch_size, data_dim]
+
+        Returns:
+            indices: [batch_size] long tensor of center indices
+        """
+        #dists = torch.cdist(x, torch.stack(self.centers))  # [batch_size, num_centers]
+        #return torch.argmin(dists, dim=1)
+        pass
+
+
+
+"""Guidance, for when we know the means or approximate them as cluster centers from data, not using embeddings but learning the null center, does not work too well"""
+
+class CenterGuidanceTrainer(GeneralGuidanceTrainer):
+    def __init__(self, path : ConditionalProbabilityPath, model,p_uncond : float, num_conditions : int, centers : list[torch.Tensor], optimizer = torch.optim.Adam, lr = 0.01,model_type : str = "FM"):
+        super().__init__(path, model, p_uncond, num_conditions, optimizer, lr, model_type)
+        if centers is None: 
+            raise ValueError("Give a valid list of centers")
+        self.centers = centers
+
     def classify(self, x: torch.Tensor) -> torch.Tensor:
         """
         Assigns each point in x to the index of its closest center.
@@ -174,8 +194,58 @@ class CenterGuidanceTrainer(BasicTrainer):
         """
         dists = torch.cdist(x, torch.stack(self.centers))  # [batch_size, num_centers]
         return torch.argmin(dists, dim=1)
-    
 
+
+class CenterGuidanceTrainer(GeneralGuidanceTrainer):
+    def __init__(self, path : ConditionalProbabilityPath, model,p_uncond : float, num_conditions : int, optimizer = torch.optim.Adam, lr = 0.01,model_type : str = "FM", centers : list[torch.Tensor] = None,  rectangle_boundaries : list[list[tuple[float, float]]] = None):
+        super().__init__(path, model, p_uncond, num_conditions, optimizer, lr, model_type)
+        if centers is None and rectangle_boundaries is None: 
+            raise ValueError("Give either some centers or rectangle boundaries, received both as None")
+        self.centers = centers
+        self.rectangle_boundaries = rectangle_boundaries
+
+
+    def classify(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Assigns each point in x to one of its valid center/rectangle indices.
+        If multiple are valid (inside rectangle and closest center), one is chosen at random uniformly.
+
+        Args:
+            x: [batch_size, data_dim]
+
+        Returns:
+            indices: [batch_size] long tensor of selected indices
+        """
+        batch_size = x.size(0)
+        device = x.device
+
+        dists = torch.cdist(x, torch.stack(self.centers))  # [batch_size, num_centers]
+        nearest_center_idx = torch.argmin(dists, dim=1)  # [batch_size]
+
+        rectangle_idxs = []
+        if self.rectangle_boundaries is not None:
+            for idx, rectangle in enumerate(self.rectangle_boundaries):
+                lowers = torch.tensor([low for (low, high) in rectangle], device=device)  # [data_dim]
+                uppers = torch.tensor([high for (low, high) in rectangle], device=device)  # [data_dim]
+                
+                in_rectangle = ((x >= lowers) & (x <= uppers)).all(dim=1)  # [batch_size] bool
+                rect_idx = len(self.centers) + idx  # rectangle indices come AFTER centers
+
+                rectangle_idxs.append((in_rectangle, rect_idx))
+
+        final_indices = []
+        for i in range(batch_size):
+            valid = [nearest_center_idx[i].item()]  
+            for in_rectangle, rect_idx in rectangle_idxs:
+                if in_rectangle[i]:
+                    valid.append(rect_idx)
+            # Randomly pick one valid label from the valid ones 
+            selected_idx = torch.tensor(valid[torch.randint(len(valid), (1,)).item()], device=device)
+            final_indices.append(selected_idx)
+
+        return torch.stack(final_indices)
+    
+    
 class GuidedVectorField(ODE):
     def __init__(self, model: nn.Module, guidance_scale: float, null_index: int):
         super().__init__()
