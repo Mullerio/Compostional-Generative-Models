@@ -162,13 +162,13 @@ class TwoMoons2D(SampleDensity):
 
 
 
-def union_sample(SampleDensity):
-    def __init__(self, densities):
+class union_sample(SampleDensity):
+    def __init__(self, densities : list[SampleDensity]):
         self.densities = densities
         
     @property
     def dim(self) -> int:
-        return self.densities[0].dim() 
+        return self.densities[0].dim 
     
     def sample(self, n: int) -> torch.Tensor:
         num_densities = len(self.densities)

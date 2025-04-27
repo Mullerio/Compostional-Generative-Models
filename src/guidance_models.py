@@ -196,19 +196,23 @@ class CenterGuidanceTrainer(GeneralGuidanceTrainer):
         return torch.argmin(dists, dim=1)
 
 
-class CenterGuidanceTrainer(GeneralGuidanceTrainer):
-    def __init__(self, path : ConditionalProbabilityPath, model,p_uncond : float, num_conditions : int, optimizer = torch.optim.Adam, lr = 0.01,model_type : str = "FM", centers : list[torch.Tensor] = None,  rectangle_boundaries : list[list[tuple[float, float]]] = None):
+class RecCenterGuidanceTrainer(GeneralGuidanceTrainer):
+    def __init__(self, path : ConditionalProbabilityPath, model,p_uncond : float, num_conditions : int, optimizer = torch.optim.Adam, lr = 0.01,model_type : str = "FM", std : list[float] = None, centers : list[torch.Tensor] = None,  rectangle_boundaries : list[list[tuple[float, float]]] = None):
         super().__init__(path, model, p_uncond, num_conditions, optimizer, lr, model_type)
         if centers is None and rectangle_boundaries is None: 
             raise ValueError("Give either some centers or rectangle boundaries, received both as None")
         self.centers = centers
         self.rectangle_boundaries = rectangle_boundaries
+        if std is None:
+            self.std = [0.0] * len(centers)
+        else: 
+            self.std = std
 
 
     def classify(self, x: torch.Tensor) -> torch.Tensor:
         """
         Assigns each point in x to one of its valid center/rectangle indices.
-        If multiple are valid (inside rectangle and closest center), one is chosen at random uniformly.
+        If multiple are valid (inside rectangle and closest center), one is chosen at random uniformly. This is pretty slow!1!
 
         Args:
             x: [batch_size, data_dim]
@@ -223,23 +227,36 @@ class CenterGuidanceTrainer(GeneralGuidanceTrainer):
         nearest_center_idx = torch.argmin(dists, dim=1)  # [batch_size]
 
         rectangle_idxs = []
-        if self.rectangle_boundaries is not None:
-            for idx, rectangle in enumerate(self.rectangle_boundaries):
-                lowers = torch.tensor([low for (low, high) in rectangle], device=device)  # [data_dim]
-                uppers = torch.tensor([high for (low, high) in rectangle], device=device)  # [data_dim]
-                
-                in_rectangle = ((x >= lowers) & (x <= uppers)).all(dim=1)  # [batch_size] bool
-                rect_idx = len(self.centers) + idx  # rectangle indices come AFTER centers
+        for idx, rectangle in enumerate(self.rectangle_boundaries):
+            lowers = torch.tensor([rectangle[i][0] for i in range(len(rectangle))], device=device)  # upper bounds tensor
+            uppers = torch.tensor([rectangle[i][1] for i in range(len(rectangle))], device=device)  # upper bounds tensor
+            
+            in_rectangle = ((x >= lowers) & (x <= uppers)).all(dim=1)  # [batch_size] bool
+            rect_idx = len(self.centers) + idx  # rectangle indices come AFTER centers
 
-                rectangle_idxs.append((in_rectangle, rect_idx))
+            rectangle_idxs.append((in_rectangle, rect_idx))
 
         final_indices = []
         for i in range(batch_size):
-            valid = [nearest_center_idx[i].item()]  
-            for in_rectangle, rect_idx in rectangle_idxs:
-                if in_rectangle[i]:
-                    valid.append(rect_idx)
-            # Randomly pick one valid label from the valid ones 
+            valid = []
+            
+            # Check if point is within support of its nearest center
+            nearest_idx = nearest_center_idx[i].item()
+            dist_to_center = torch.norm(x[i] - self.centers[nearest_idx].to(device))
+            if dist_to_center <= self.std[nearest_idx]:
+                valid.append(nearest_idx)
+            
+            # Check rectangle boundaries if they exist
+            if self.rectangle_boundaries is not None:
+                for in_rectangle, rect_idx in rectangle_idxs:
+                    if in_rectangle[i]:
+                        valid.append(rect_idx)
+            
+            # If no valid options (not in any support or rectangle), use nearest center as fallback
+            if not valid:
+                valid.append(nearest_center_idx[i].item())
+            
+            # Randomly select from valid options
             selected_idx = torch.tensor(valid[torch.randint(len(valid), (1,)).item()], device=device)
             final_indices.append(selected_idx)
 
