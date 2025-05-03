@@ -1,5 +1,7 @@
 from .base_models import *
 import random
+from scipy.stats import norm
+import numpy as np
 
 """Basic MLP where we embed the guidance parameter to some higher dimension for better learning"""
 
@@ -203,13 +205,79 @@ class RecCenterGuidanceTrainer(GeneralGuidanceTrainer):
             raise ValueError("Give either some centers or rectangle boundaries, received both as None")
         self.centers = centers
         self.rectangle_boundaries = rectangle_boundaries
-        if std is None:
-            self.std = [0.0] * len(centers)
+        if std is None and self.centers is not None:
+            self.std = [1] * len(centers)
         else: 
             self.std = std
-
+        
+        if centers is not None: 
+            self.center_rectangle_overlap_probs = torch.zeros((len(self.centers), len(self.rectangle_boundaries)))
+            for i, center in enumerate(self.centers):
+                for j, rect in enumerate(self.rectangle_boundaries):
+                    self.center_rectangle_overlap_probs[i, j] = rect_gauss_overlap_mass(center, self.std[i], rect)
 
     def classify(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size = x.size(0)
+        device = x.device
+
+        final_indices = []
+
+        # Precompute center distances if centers exist
+        if self.centers is not None:
+            center_tensor = torch.stack(self.centers).to(device)
+            dists = torch.cdist(x, center_tensor)
+            nearest_center_idx = torch.argmin(dists, dim=1)
+
+        for i in range(batch_size):
+            xi = x[i]
+            valid_indices = []
+            weights = []
+
+            if self.centers is not None:
+                nearest_idx = nearest_center_idx[i].item()
+                dist = torch.norm(xi - self.centers[nearest_idx].to(device))
+                if dist <= self.std[nearest_idx]:
+                    valid_indices.append(nearest_idx)
+                    weights.append(1.0)  # temporary weight (will normalize later)
+
+            if self.rectangle_boundaries is not None:
+                for j, rect in enumerate(self.rectangle_boundaries):
+                    lowers = torch.tensor([r[0] for r in rect], device=device)
+                    uppers = torch.tensor([r[1] for r in rect], device=device)
+                    in_rectangle = ((xi >= lowers) & (xi <= uppers)).all()
+
+                    if in_rectangle:
+                        rect_idx = len(self.centers) + j if self.centers is not None else j
+                        valid_indices.append(rect_idx)
+
+                        # Weight based on overlap with nearest center (if applicable)
+                        if self.centers is not None:
+                            nearest_idx = nearest_center_idx[i].item()
+                            overlap_prob = self.center_rectangle_overlap_probs[nearest_idx, j].item()
+                            weights.append(overlap_prob)
+                        else:
+                            weights.append(1.0)  # equal weight for rectangles only
+
+            if not valid_indices:
+                # Fallback to nearest center (even outside std) if available
+                if self.centers is not None:
+                    fallback_idx = nearest_center_idx[i].item()
+                    final_indices.append(torch.tensor(fallback_idx, device=device))
+                    continue
+                else:
+                    raise ValueError(f"Point {xi} did not fall in any valid rectangle and no centers provided.")
+
+            # Normalize weights and sample
+            weight_tensor = torch.tensor(weights, device=device, dtype=torch.float)
+            norm_weights = weight_tensor / weight_tensor.sum()
+            chosen = torch.multinomial(norm_weights, 1).item()
+            final_indices.append(torch.tensor(valid_indices[chosen], device=device))
+
+        return torch.stack(final_indices)
+
+
+    
+    def classify2(self, x: torch.Tensor) -> torch.Tensor:
         """
         Assigns each point in x to one of its valid center/rectangle indices.
         If multiple are valid (inside rectangle and closest center), one is chosen at random uniformly. This is pretty slow!1!
@@ -240,23 +308,21 @@ class RecCenterGuidanceTrainer(GeneralGuidanceTrainer):
         for i in range(batch_size):
             valid = []
             
-            # Check if point is within support of its nearest center
             nearest_idx = nearest_center_idx[i].item()
             dist_to_center = torch.norm(x[i] - self.centers[nearest_idx].to(device))
             if dist_to_center <= self.std[nearest_idx]:
                 valid.append(nearest_idx)
             
-            # Check rectangle boundaries if they exist
             if self.rectangle_boundaries is not None:
                 for in_rectangle, rect_idx in rectangle_idxs:
                     if in_rectangle[i]:
                         valid.append(rect_idx)
             
-            # If no valid options (not in any support or rectangle), use nearest center as fallback
             if not valid:
                 valid.append(nearest_center_idx[i].item())
             
-            # Randomly select from valid options
+            
+            #SELECT INDICIES BASED ON WEIGHT OF MASS THAT OVERLAPS?!
             selected_idx = torch.tensor(valid[torch.randint(len(valid), (1,)).item()], device=device)
             final_indices.append(selected_idx)
 

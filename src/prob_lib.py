@@ -1,7 +1,32 @@
 import torch
 from abc import ABC, abstractmethod
+from scipy.stats import norm
+import numpy as np
+
 
 """Abstract classes for probability, including schedulers for gaussian paths """
+
+
+            
+def rect_gauss_overlap_mass(center: torch.Tensor, std: float, rectangle: list[tuple[float, float]]) -> float:
+    """
+    Estimate the probability mass of a multivariate Gaussian within a rectangle.
+
+    Args:
+        center: torch.Tensor of shape [D] – mean of the Gaussian
+        std: float – standard deviation (assumed same in all dimensions)
+        rectangle: list of (lower, upper) tuples – one per dimension
+
+    Returns:
+        Float – estimated probability mass inside the rectangle
+    """
+    center_np = center.detach().cpu().numpy()
+    probs = []
+    for d in range(len(center_np)):
+        low, high = rectangle[d]
+        p = norm.cdf(high, loc=center_np[d], scale=std) - norm.cdf(low, loc=center_np[d], scale=std)
+        probs.append(p)
+    return float(np.prod(probs))
 
 class LogDensity(ABC):
     """
