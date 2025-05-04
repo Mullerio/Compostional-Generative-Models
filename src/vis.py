@@ -14,6 +14,7 @@ def plot_samples(samples: torch.Tensor,
                  scatter : bool = True,
                  grid : bool = True,
                  contour_cmap: str = "gray",
+                 plot_range : tuple[tuple[float,float], tuple[float,float]] = None,
                  ax : Optional[plt.Axes] = None,
                  save_path: str = None):
     """
@@ -58,13 +59,66 @@ def plot_samples(samples: torch.Tensor,
     if scatter:
         ax.scatter(x, y, color='black', s=point_size, alpha=point_alpha, edgecolors='none')
     ax.set_title(title, fontsize=14)
-    ax.axis("equal")
     
     if grid:
         ax.grid(True, color='gray', linestyle='--', linewidth=0.5) 
     
     if save_path:
         ax.savefig(save_path, dpi=300, bbox_inches='tight')
+    
+    if plot_range is not None: 
+        ax.set_xlim(plot_range[0])
+        ax.set_ylim(plot_range[1])    
+    else: 
+        ax.axis("equal")
+
+
+
+def plot_trajectories(trajectories: torch.Tensor, 
+                      title: str = "Sampled Trajectories", 
+                      num_to_plot: int = 100,
+                      alpha: float = 0.7,
+                      linewidth: float = 1.0,
+                      start_end_points: bool = True,
+                      plot_range: Optional[tuple[tuple[float, float], tuple[float, float]]] = None,
+                      ax: Optional[plt.Axes] = None,
+                      save_path: str = None):
+    """
+    Plot 2D traj
+
+    Args:
+        trajectories: Tensor of shape (batch_size, num_steps, 2)
+        num_to_plot: Number of individual trajectories to draw
+        alpha: Transparency of the lines
+        linewidth: Line thickness
+        start_end_points: Whether to mark start and end with dots
+        plot_range: ((xmin, xmax), (ymin, ymax))
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(6, 6))
+
+    data = trajectories.detach().cpu().numpy()
+    for traj in data[:num_to_plot]:
+        ax.plot(traj[:, 0], traj[:, 1], color='black', alpha=alpha, linewidth=linewidth)
+        if start_end_points:
+            ax.scatter(traj[0, 0], traj[0, 1], color='green', s=10)  # Start
+            ax.scatter(traj[-1, 0], traj[-1, 1], color='red', s=10)  # End
+
+    ax.set_title(title)
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    ax.grid(True, linestyle='--', linewidth=0.5)
+
+    if plot_range is not None:
+        ax.set_xlim(plot_range[0])
+        ax.set_ylim(plot_range[1])
+        ax.set_aspect("auto")
+    else:
+        ax.axis("equal")
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')    
+    
     
     
 def plot_kde(samples: torch.Tensor, 

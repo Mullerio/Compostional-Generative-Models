@@ -259,7 +259,6 @@ class RecCenterGuidanceTrainer(GeneralGuidanceTrainer):
                             weights.append(1.0)  # equal weight for rectangles only
 
             if not valid_indices:
-                # Fallback to nearest center (even outside std) if available
                 if self.centers is not None:
                     fallback_idx = nearest_center_idx[i].item()
                     final_indices.append(torch.tensor(fallback_idx, device=device))
@@ -274,60 +273,6 @@ class RecCenterGuidanceTrainer(GeneralGuidanceTrainer):
             final_indices.append(torch.tensor(valid_indices[chosen], device=device))
 
         return torch.stack(final_indices)
-
-
-    
-    def classify2(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Assigns each point in x to one of its valid center/rectangle indices.
-        If multiple are valid (inside rectangle and closest center), one is chosen at random uniformly. This is pretty slow!1!
-
-        Args:
-            x: [batch_size, data_dim]
-
-        Returns:
-            indices: [batch_size] long tensor of selected indices
-        """
-        batch_size = x.size(0)
-        device = x.device
-
-        dists = torch.cdist(x, torch.stack(self.centers))  # [batch_size, num_centers]
-        nearest_center_idx = torch.argmin(dists, dim=1)  # [batch_size]
-
-        rectangle_idxs = []
-        for idx, rectangle in enumerate(self.rectangle_boundaries):
-            lowers = torch.tensor([rectangle[i][0] for i in range(len(rectangle))], device=device)  # upper bounds tensor
-            uppers = torch.tensor([rectangle[i][1] for i in range(len(rectangle))], device=device)  # upper bounds tensor
-            
-            in_rectangle = ((x >= lowers) & (x <= uppers)).all(dim=1)  # [batch_size] bool
-            rect_idx = len(self.centers) + idx  # rectangle indices come AFTER centers
-
-            rectangle_idxs.append((in_rectangle, rect_idx))
-
-        final_indices = []
-        for i in range(batch_size):
-            valid = []
-            
-            nearest_idx = nearest_center_idx[i].item()
-            dist_to_center = torch.norm(x[i] - self.centers[nearest_idx].to(device))
-            if dist_to_center <= self.std[nearest_idx]:
-                valid.append(nearest_idx)
-            
-            if self.rectangle_boundaries is not None:
-                for in_rectangle, rect_idx in rectangle_idxs:
-                    if in_rectangle[i]:
-                        valid.append(rect_idx)
-            
-            if not valid:
-                valid.append(nearest_center_idx[i].item())
-            
-            
-            #SELECT INDICIES BASED ON WEIGHT OF MASS THAT OVERLAPS?!
-            selected_idx = torch.tensor(valid[torch.randint(len(valid), (1,)).item()], device=device)
-            final_indices.append(selected_idx)
-
-        return torch.stack(final_indices)
-    
     
 class GuidedVectorField(ODE):
     def __init__(self, model: nn.Module, guidance_scale: float, null_index: int):
