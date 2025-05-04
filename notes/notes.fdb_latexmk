@@ -1,6 +1,6 @@
 # Fdb version 4
-["pdflatex"] 1745755376.31023 "c:/Users/JoCraft/Desktop/Compostional-Generative-Models/notes/notes.tex" "notes.pdf" "notes" 1745755378.48965 0
-  "c:/Users/JoCraft/Desktop/Compostional-Generative-Models/notes/notes.tex" 1745755374 3382 c30456447816f3f4a500d11a5ea9d8ae ""
+["pdflatex"] 1746376698.86638 "c:/Users/JoCraft/Desktop/Compostional-Generative-Models/notes/notes.tex" "notes.pdf" "notes" 1746376702.56697 0
+  "c:/Users/JoCraft/Desktop/Compostional-Generative-Models/notes/notes.tex" 1746376696 3474 6b5e7904cb4967a1ef8eb7f4645302fc ""
   "c:/texlive/2024/texmf-dist/fonts/enc/dvips/lm/lm-ec.enc" 1729628637 2375 baa924870cfb487815765f9094cf3728 ""
   "c:/texlive/2024/texmf-dist/fonts/enc/dvips/lm/lm-mathex.enc" 1729628637 3486 c7eadf5dcc57b3b2d11736679f6636ba ""
   "c:/texlive/2024/texmf-dist/fonts/enc/dvips/lm/lm-mathit.enc" 1729628637 2405 5dcf2c1b967ee25cc46c58cd52244aed ""
@@ -216,8 +216,8 @@
   "c:/texlive/2024/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1729630985 5521136 47e49b84c41d5ab3414c7e2d0ef6eb2b ""
   "c:/texlive/2024/texmf-var/web2c/pdftex/pdflatex.fmt" 1729631149 3325949 241d6d7e0a672f01047a8a59c11c3a0c ""
   "c:/texlive/2024/texmf.cnf" 1729630967 713 e69b156964470283e0530f5060668171 ""
-  "notes.aux" 1745755378 103 52e2418cdee355242bd0585819c5863d "pdflatex"
-  "notes.tex" 1745755374 3382 c30456447816f3f4a500d11a5ea9d8ae ""
+  "notes.aux" 1746376702 103 52e2418cdee355242bd0585819c5863d "pdflatex"
+  "notes.tex" 1746376696 3474 6b5e7904cb4967a1ef8eb7f4645302fc ""
   (generated)
   "notes.aux"
   "notes.log"
