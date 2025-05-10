@@ -1,0 +1,196 @@
+% $ biblatex auxiliary file $
+% $ biblatex bbl format version 3.2 $
+% Do not modify the above lines!
+%
+% This is an auxiliary file used by the 'biblatex' package.
+% This file may safely be deleted. It will be recreated by
+% biber as required.
+%
+\begingroup
+\makeatletter
+\@ifundefined{ver@biblatex.sty}
+  {\@latex@error
+     {Missing 'biblatex' package}
+     {The bibliography requires the 'biblatex' package.}
+      \aftergroup\endinput}
+  {}
+\endgroup
+
+
+\refsection{0}
+  \datalist[entry]{none/global//global/global}
+    \entry{reduce}{inproceedings}{}
+      \name{author}{9}{}{%
+        {{hash=0292e43cebfdbcde9e20aa4fdbe17700}{%
+           family={Du},
+           familyi={D\bibinitperiod},
+           given={Yilun},
+           giveni={Y\bibinitperiod}}}%
+        {{hash=08439cf1d9cfff317a25afa9fd3255ac}{%
+           family={Durkan},
+           familyi={D\bibinitperiod},
+           given={Conor},
+           giveni={C\bibinitperiod}}}%
+        {{hash=c059d19127cf2ed3c99310f035fc468d}{%
+           family={Strudel},
+           familyi={S\bibinitperiod},
+           given={Robin},
+           giveni={R\bibinitperiod}}}%
+        {{hash=5c7ff02e1f8b4c4aa7bfddece14f23d2}{%
+           family={Tenenbaum},
+           familyi={T\bibinitperiod},
+           given={Joshua\bibnamedelima B},
+           giveni={J\bibinitperiod\bibinitdelim B\bibinitperiod}}}%
+        {{hash=a133b469b21b870786119a47b1b691eb}{%
+           family={Dieleman},
+           familyi={D\bibinitperiod},
+           given={Sander},
+           giveni={S\bibinitperiod}}}%
+        {{hash=a6784304d1cc890b2cb6c6c7f2f3fd76}{%
+           family={Fergus},
+           familyi={F\bibinitperiod},
+           given={Rob},
+           giveni={R\bibinitperiod}}}%
+        {{hash=529bdf392a3471f000ce33ec88c41bd5}{%
+           family={Sohl-Dickstein},
+           familyi={S\bibinithyphendelim D\bibinitperiod},
+           given={Jascha},
+           giveni={J\bibinitperiod}}}%
+        {{hash=aca5faad8b57b96b59c12fc59d0b6eb4}{%
+           family={Doucet},
+           familyi={D\bibinitperiod},
+           given={Arnaud},
+           giveni={A\bibinitperiod}}}%
+        {{hash=b11e343408304cf760dc52660fafd892}{%
+           family={Grathwohl},
+           familyi={G\bibinitperiod},
+           given={Will\bibnamedelima Sussman},
+           giveni={W\bibinitperiod\bibinitdelim S\bibinitperiod}}}%
+      }
+      \list{organization}{1}{%
+        {PMLR}%
+      }
+      \strng{namehash}{cb9e1d17e3a492f67bdbce969e3f065b}
+      \strng{fullhash}{ae87eb90e4d28933937ddce46ccd589a}
+      \strng{bibnamehash}{cb9e1d17e3a492f67bdbce969e3f065b}
+      \strng{authorbibnamehash}{cb9e1d17e3a492f67bdbce969e3f065b}
+      \strng{authornamehash}{cb9e1d17e3a492f67bdbce969e3f065b}
+      \strng{authorfullhash}{ae87eb90e4d28933937ddce46ccd589a}
+      \field{sortinit}{1}
+      \field{sortinithash}{4f6aaa89bab872aa0999fec09ff8e98a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{booktitle}{International conference on machine learning}
+      \field{title}{Reduce, reuse, recycle: Compositional generation with energy-based diffusion models and mcmc}
+      \field{year}{2023}
+      \field{pages}{8489\bibrangedash 8510}
+      \range{pages}{22}
+    \endentry
+    \entry{liu2023compositionalvisualgenerationcomposable}{misc}{}
+      \name{author}{5}{}{%
+        {{hash=ae12d7ceeacb5b7ceff7115af0984cfc}{%
+           family={Liu},
+           familyi={L\bibinitperiod},
+           given={Nan},
+           giveni={N\bibinitperiod}}}%
+        {{hash=361de3730283fb08fe548e787e97a83c}{%
+           family={Li},
+           familyi={L\bibinitperiod},
+           given={Shuang},
+           giveni={S\bibinitperiod}}}%
+        {{hash=0292e43cebfdbcde9e20aa4fdbe17700}{%
+           family={Du},
+           familyi={D\bibinitperiod},
+           given={Yilun},
+           giveni={Y\bibinitperiod}}}%
+        {{hash=2a80dd1cae02059e95bfed2f2715fd0a}{%
+           family={Torralba},
+           familyi={T\bibinitperiod},
+           given={Antonio},
+           giveni={A\bibinitperiod}}}%
+        {{hash=5c7ff02e1f8b4c4aa7bfddece14f23d2}{%
+           family={Tenenbaum},
+           familyi={T\bibinitperiod},
+           given={Joshua\bibnamedelima B.},
+           giveni={J\bibinitperiod\bibinitdelim B\bibinitperiod}}}%
+      }
+      \strng{namehash}{d5aad9a193aca90a3a1b9910a44dcf9e}
+      \strng{fullhash}{ccf6648b93eeba1cd0aa676af075a077}
+      \strng{bibnamehash}{d5aad9a193aca90a3a1b9910a44dcf9e}
+      \strng{authorbibnamehash}{d5aad9a193aca90a3a1b9910a44dcf9e}
+      \strng{authornamehash}{d5aad9a193aca90a3a1b9910a44dcf9e}
+      \strng{authorfullhash}{ccf6648b93eeba1cd0aa676af075a077}
+      \field{sortinit}{2}
+      \field{sortinithash}{8b555b3791beccb63322c22f3320aa9a}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{eprintclass}{cs.CV}
+      \field{eprinttype}{arXiv}
+      \field{title}{Compositional Visual Generation with Composable Diffusion Models}
+      \field{year}{2023}
+      \verb{eprint}
+      \verb 2206.01714
+      \endverb
+      \verb{urlraw}
+      \verb https://arxiv.org/abs/2206.01714
+      \endverb
+      \verb{url}
+      \verb https://arxiv.org/abs/2206.01714
+      \endverb
+    \endentry
+    \entry{bradley2025mechanismsprojectivecompositiondiffusion}{misc}{}
+      \name{author}{5}{}{%
+        {{hash=22ae841e695fd858a989a40371245972}{%
+           family={Bradley},
+           familyi={B\bibinitperiod},
+           given={Arwen},
+           giveni={A\bibinitperiod}}}%
+        {{hash=40e2f3b9e5b92b654aa9f0b7daf86b17}{%
+           family={Nakkiran},
+           familyi={N\bibinitperiod},
+           given={Preetum},
+           giveni={P\bibinitperiod}}}%
+        {{hash=2b637540293a774a612f359db2bbe654}{%
+           family={Berthelot},
+           familyi={B\bibinitperiod},
+           given={David},
+           giveni={D\bibinitperiod}}}%
+        {{hash=e587e9f57178ad06c825a3931cfb366f}{%
+           family={Thornton},
+           familyi={T\bibinitperiod},
+           given={James},
+           giveni={J\bibinitperiod}}}%
+        {{hash=e858245bede747d23922f3aa2808d388}{%
+           family={Susskind},
+           familyi={S\bibinitperiod},
+           given={Joshua\bibnamedelima M.},
+           giveni={J\bibinitperiod\bibinitdelim M\bibinitperiod}}}%
+      }
+      \strng{namehash}{993a8bd6617bced7906fb590ce384d64}
+      \strng{fullhash}{ac24d609dac2c7bab9e80af058acfa16}
+      \strng{bibnamehash}{993a8bd6617bced7906fb590ce384d64}
+      \strng{authorbibnamehash}{993a8bd6617bced7906fb590ce384d64}
+      \strng{authornamehash}{993a8bd6617bced7906fb590ce384d64}
+      \strng{authorfullhash}{ac24d609dac2c7bab9e80af058acfa16}
+      \field{sortinit}{4}
+      \field{sortinithash}{9381316451d1b9788675a07e972a12a7}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{eprintclass}{cs.LG}
+      \field{eprinttype}{arXiv}
+      \field{title}{Mechanisms of Projective Composition of Diffusion Models}
+      \field{year}{2025}
+      \verb{eprint}
+      \verb 2502.04549
+      \endverb
+      \verb{urlraw}
+      \verb https://arxiv.org/abs/2502.04549
+      \endverb
+      \verb{url}
+      \verb https://arxiv.org/abs/2502.04549
+      \endverb
+    \endentry
+  \enddatalist
+\endrefsection
+\endinput
+
