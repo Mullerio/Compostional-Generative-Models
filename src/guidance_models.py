@@ -5,58 +5,6 @@ import numpy as np
 
 """Basic MLP where we embed the guidance parameter to some higher dimension for better learning"""
 
-class EmbeddedBasicMLP(nn.Module):
-    def __init__(self, input_dim: int, hidden_dims: list[int], conditional: bool = False, 
-                 num_conditions: int = None, embedding_dim: int = None):
-        """
-        Args:
-            input_dim: dimension of x
-            hidden_dims: list of hidden layer sizes
-            conditional: whether to use conditional input
-            num_conditions: number of discrete conditions (clusters)
-            embedding_dim: size of the embedding vectors (can be used for guidance)
-        """
-        super().__init__()
-        self.conditional = conditional
-
-        if conditional:
-            assert num_conditions is not None and embedding_dim is not None, "For conditional, provide num_conditions and embedding_dim"
-            self.embed = nn.Embedding(num_conditions, embedding_dim)
-            cond_dim = embedding_dim
-        else:
-            cond_dim = 0
-
-        layers = []
-        current_dim = input_dim + 1 + cond_dim  
-        for i, h in enumerate(hidden_dims):
-            layers.append(nn.Linear(current_dim, h))
-            if i < len(hidden_dims) - 1:
-                layers.append(nn.SiLU())
-            current_dim = h
-        layers.append(nn.Linear(current_dim, input_dim)) 
-
-        self.mlp = nn.Sequential(*layers)    
-
-    def forward(self, x: torch.Tensor, t: torch.Tensor, y_index: torch.Tensor = None) -> torch.Tensor:
-        """
-        Args:
-            x: [batch, input_dim]
-            t: [batch, 1]
-            y_index: [batch] (long) -- index of conditioning cluster 
-        """
-        if self.conditional:
-            if y_index is None:
-                raise ValueError("Conditional model requires y_index")
-            if y_index.dim() == 2:  # make sure y_index is shape [B], not [B,1]
-                y_index = y_index.squeeze(-1)
-            y_embed = self.embed(y_index)  # [batch, embedding_dim]
-            input_tensor = torch.cat([x, t, y_embed], dim=-1)
-        else:
-            input_tensor = torch.cat([x, t], dim=-1)
-
-        return self.mlp(input_tensor)     
-
-
 class CenterGuidanceTrainerOLD(BasicTrainer):
     def __init__(self, path: ConditionalProbabilityPath, model, p_uncond: float, 
                  optimizer=torch.optim.Adam, lr=0.01, model_type="FM", num_conditions=None, null_idx=0):
@@ -66,20 +14,20 @@ class CenterGuidanceTrainerOLD(BasicTrainer):
         self.p_uncond = p_uncond
         self.type = model_type
         self.num_conditions = num_conditions
-        self.null_idx = null_idx  # index used for unconditional pass
+        self.null_idx = null_idx  # index used for unconditional 
 
     def get_loss(self, n):
         z = self.path.p_data.sample(n)  # target data
         t = torch.rand(n, 1).to(z)
 
-        # Sample conditioning indices (as integers)
-        y_index = torch.randint(0, self.num_conditions, (n,), device=z.device)  # [n]
+        # Sample conditioning indices
+        y_index = torch.randint(0, self.num_conditions,(n,), device=z.device)  
         
         # Sample conditional path from centers
         cond_pt = self.path.sample_conditional_path(z, t)
 
         # Apply classifier-free guidance dropout
-        drop_mask = (torch.rand(n, device=z.device) < self.p_uncond)  # shape [n]
+        drop_mask = (torch.rand(n, device=z.device) < self.p_uncond)  
         y_masked = y_index.clone()
         y_masked[drop_mask] = self.null_idx  # set to "unconditional" index
 
@@ -250,13 +198,12 @@ class RecCenterGuidanceTrainer(GeneralGuidanceTrainer):
                         rect_idx = len(self.centers) + j if self.centers is not None else j
                         valid_indices.append(rect_idx)
 
-                        # Weight based on overlap with nearest center (if applicable)
                         if self.centers is not None:
                             nearest_idx = nearest_center_idx[i].item()
                             overlap_prob = self.center_rectangle_overlap_probs[nearest_idx, j].item()
                             weights.append(overlap_prob)
                         else:
-                            weights.append(1.0)  # equal weight for rectangles only
+                            weights.append(1.0)  
 
             if not valid_indices:
                 if self.centers is not None:
@@ -264,7 +211,7 @@ class RecCenterGuidanceTrainer(GeneralGuidanceTrainer):
                     final_indices.append(torch.tensor(fallback_idx, device=device))
                     continue
                 else:
-                    raise ValueError(f"Point {xi} did not fall in any valid rectangle and no centers provided.")
+                    raise ValueError(f"Point {xi} did not fall in any valid rectangle and no centers given.")
 
             # Normalize weights and sample
             weight_tensor = torch.tensor(weights, device=device, dtype=torch.float)
@@ -273,6 +220,128 @@ class RecCenterGuidanceTrainer(GeneralGuidanceTrainer):
             final_indices.append(torch.tensor(valid_indices[chosen], device=device))
 
         return torch.stack(final_indices)
+    
+    
+    
+
+class RecGMGuidanceTrainer(GeneralGuidanceTrainer):
+    def __init__(
+        self,
+        path: ConditionalProbabilityPath,
+        model,
+        p_uncond: float,
+        num_conditions: int,
+        optimizer=torch.optim.Adam,
+        lr=0.01,
+        model_type: str = "FM",
+        std: list[float] = None,
+        centers: list[list[torch.Tensor]] = None,  
+        rectangle_boundaries: list[list[tuple[float, float]]] = None
+    ):
+        """
+        Rectangle and Gaussian Mixture Guidance Trainer 
+
+        Args:
+            path (ConditionalProbabilityPath): _description_
+            model (_type_): _description_
+            p_uncond (float): _description_
+            num_conditions (int): _description_
+            optimizer (_type_, optional): _description_. Defaults to torch.optim.Adam.
+            lr (float, optional): _description_. Defaults to 0.01.
+            model_type (str, optional): _description_. Defaults to "FM".
+            std (list[float], optional): _description_. Defaults to None.
+            centers (list[list[torch.Tensor]], optional): _description_. Defaults to None.
+
+        Raises:
+            ValueError: _description_
+        """
+        super().__init__(path, model, p_uncond, num_conditions, optimizer, lr, model_type)
+
+        if centers is None and rectangle_boundaries is None:
+            raise ValueError("Give either some centers or rectangle boundaries, received both as None")
+
+        self.centers = centers  # one list of centers per Gaussian Mixture
+        self.rectangle_boundaries = rectangle_boundaries
+
+        if std is None and centers is not None:
+            self.std = [1.0] * len(centers)
+        else:
+            self.std = std
+
+        if centers is not None and rectangle_boundaries is not None:
+            self.center_rectangle_overlap_probs = torch.zeros((len(centers), len(rectangle_boundaries)))
+            for i, modes in enumerate(centers):  # for each mixture, we want to compute the overlap between that mixture with each rectangle
+                sig = self.std[i]
+                for j, rect in enumerate(rectangle_boundaries):
+                    probs = [rect_gauss_overlap_mass(mode, sig, rect) for mode in modes]
+                    self.center_rectangle_overlap_probs[i, j] = 1 - np.prod([1 - p for p in probs]) # could also try something like max, or other weighting  
+
+    def classify(self, x: torch.Tensor) -> torch.Tensor:
+        """Classification of x to closest center up to deviation or rectangle of which x is inside of. 
+        This implementation is somewhat janky, TODO: improve readability and refactor, since in results it seems to not be balanced too well
+        """
+        batch_size = x.size(0)
+        device = x.device
+        final_indices = []
+
+        # Precompute distances to all modes in all mixtures
+        mode_tensors = []
+        mixture_indices = []
+
+        if self.centers is not None:
+            for i, mode_list in enumerate(self.centers):
+                for mode in mode_list:
+                    mode_tensors.append(mode.to(device))
+                    mixture_indices.append(i)
+            all_modes = torch.stack(mode_tensors)  # [total_modes, D]
+            dists = torch.cdist(x, all_modes)      # [batch_size, total_modes]
+            closest_mode_indices = torch.argmin(dists, dim=1)
+            closest_mixture_indices = torch.tensor([mixture_indices[idx] for idx in closest_mode_indices.tolist()], device=device)
+
+        for i in range(batch_size): # very expensive, but dont know how to make this better without having a pre-learned classification model
+            xi = x[i]
+            valid_indices = []
+            weights = []
+
+            if self.centers is not None:
+                nearest_mix = closest_mixture_indices[i].item()
+                # Find distance to nearest mode of the mixture
+                mode_list = self.centers[nearest_mix]
+                dists_to_modes = [torch.norm(xi - m.to(device)) for m in mode_list]
+                if min(dists_to_modes) <= self.std[nearest_mix]:
+                    valid_indices.append(nearest_mix)
+                    weights.append(1.0)
+
+            if self.rectangle_boundaries is not None:
+                for j, rect in enumerate(self.rectangle_boundaries):
+                    lowers = torch.tensor([r[0] for r in rect], device=device)
+                    uppers = torch.tensor([r[1] for r in rect], device=device)
+                    in_rect = ((xi >= lowers) & (xi <= uppers)).all()
+                    if in_rect:
+                        idx = len(self.centers) + j if self.centers is not None else j
+                        valid_indices.append(idx)
+                        if self.centers is not None:
+                            overlap_prob = self.center_rectangle_overlap_probs[closest_mixture_indices[i], j].item()
+                            weights.append(overlap_prob)
+                        else:
+                            weights.append(1.0)
+
+            if not valid_indices:
+                if self.centers is not None:
+                    fallback_idx = closest_mixture_indices[i].item()
+                    final_indices.append(torch.tensor(fallback_idx, device=device))
+                    continue
+                else:
+                    raise ValueError(f"Point {xi} is not inside any rectangle and no centers given.")
+
+            weight_tensor = torch.tensor(weights, device=device, dtype=torch.float)
+            norm_weights = weight_tensor / weight_tensor.sum()
+            chosen = torch.multinomial(norm_weights, 1).item()
+            final_indices.append(torch.tensor(valid_indices[chosen], device=device))
+
+        return torch.stack(final_indices)    
+    
+    
     
 class GuidedVectorField(ODE):
     def __init__(self, model: nn.Module, guidance_scale: float, null_index: int):

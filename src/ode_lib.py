@@ -71,34 +71,31 @@ class Sampler(ABC):
         traj[0] = x_init
         x = x_init
         for idx in range(len(steps) - 1):
-            step_now = steps[:, idx]
-            dt = steps[:, idx + 1] - steps[:, idx]
+            step_now = steps[:, idx] #[batch_size, 1] 
+            dt = steps[:, idx + 1] - steps[:, idx] #[batch_size, 1] 
             x = self.solver.step(x, step_now, dt, **kwargs)
             traj[idx+1] = x.clone() #dont pass reference,store current x
 
         return traj
-    
-    
-    
+
     @torch.no_grad()
-    def sample_with_trajectory(self, x: torch.Tensor, ts: torch.Tensor):
+    def sample_without_traj(self, x_init : torch.tensor, steps : torch.Tensor, **kwargs) -> torch.Tensor: 
         """
-        Simulates using the discretization gives by ts
+        Sample the ODE using the given Solver of the Sampler Class without storing the entire trajectory        
         Args:
-            - x_init: initial state at time ts[0], shape (bs, dim)
-            - ts: timesteps, shape (bs, num_timesteps, 1)
+            x_init (torch.tensor): initial state at t_start [batch_size, dim]
+            steps (torch.Tensor): steps[i] == timestep we sample at step i [number_timesteps]
+            
         Returns:
-            - xs: trajectory of xts over ts, shape (batch_size, num
-            _timesteps, dim)
+            torch.Tensor: final timestep [dim]
         """
-        xs = [x.clone()]
-        nts = ts.shape[1]
-        for t_idx in tqdm(range(nts - 1)):
-            t = ts[:,t_idx]
-            h = ts[:, t_idx + 1] - ts[:, t_idx]
-            x = self.solver.step(x, t, h)
-            xs.append(x.clone())
-        return torch.stack(xs, dim=1)
+        x = x_init
+        for idx in range(len(steps) - 1):
+            t = steps[:, idx]
+            dt = steps[:, idx + 1] - steps[:, idx]
+            x = self.solver.step(x, t, dt, **kwargs)
+            
+        return x
         
         
 class SDE(ODE):

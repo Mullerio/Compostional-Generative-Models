@@ -5,27 +5,11 @@ from typing import Optional
 import numpy as np
 import seaborn as sns
 from .vis import *
+from .dataset_util import *
 
 """
 Basic Toy Datasets for Experimentation, mostly in 2D
 """
-
-def apply_affine_2d(x : torch.Tensor, scale=1.0, rotation=0.0, offset: Optional[torch.Tensor] = None):
-    if offset is None: 
-        offset = (0,0)
-    if isinstance(scale, (float, int)):
-        scale = (scale, scale)
-    scale_matrix = torch.diag(torch.tensor(scale, dtype=torch.float32))
-
-    rotation = torch.tensor(rotation)
-    rot_matrix = torch.tensor([
-        [torch.cos(rotation), -torch.sin(rotation)],
-        [torch.sin(rotation),  torch.cos(rotation)]
-    ], dtype=torch.float32)
-
-    affine_matrix = rot_matrix @ scale_matrix
-    return x @ affine_matrix.T + torch.tensor(offset, dtype=torch.float32)
-
 
 #Gaussian and Multivariate Gaussian are originally taken from MIT CS 6.S184 by Peter Holderrieth and Ezra Erives, however i have made some adjustments 
 class Gaussian(torch.nn.Module, LogDensity, SampleDensity):
@@ -159,34 +143,8 @@ class TwoMoons2D(SampleDensity):
         x, _ = make_moons(n_samples=n, noise=self.noise)
         x = torch.tensor(x, dtype=torch.float32)
         return apply_affine_2d(x, self.scale, self.rotation, self.offset).to(self.device)
-
-
-
-class union_sample(SampleDensity):
-    def __init__(self, densities : list[SampleDensity]):
-        self.densities = densities
-        
-    @property
-    def dim(self) -> int:
-        return self.densities[0].dim 
     
-    def sample(self, n: int) -> torch.Tensor:
-        num_densities = len(self.densities)
-        choices = torch.randint(0, num_densities, size=(n,))  # [n] index of all densities to sample from
-
-        counts = torch.bincount(choices, minlength=num_densities)  # [num_densities] how many times each density was chosen
-
-        # Sample from each density separately
-        samples = []
-        for idx, count in enumerate(counts):
-            if count > 0:
-                samples.append(self.densities[idx].sample(count))
-
-        return torch.cat(samples, dim=0)
-
-    
-
-class RectangleDataset(SampleDensity):
+class Rectangle(SampleDensity, LogDensity):
     def __init__(self, device : torch.device,  coords : list[tuple[float, float]], rotation=0.0):
         self.device = device
         self.coords = coords
@@ -206,19 +164,28 @@ class RectangleDataset(SampleDensity):
         if self.dim > 2: 
             return torch.stack(boundaries, dim = 1)
         return apply_affine_2d(torch.stack(boundaries,  dim=1), rotation=self.rotation).to(self.device)
+    
+    def log_density(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        log density of uniform distribution over the given rectangle, -inf where density is 0!
+        Args:
+            x (torch.Tensor): points to evaluate log density at, shape [batch_size, dim]
+        """
+        if self.rotation != 0.0:
+            x = apply_affine_2d(x, rotation=-self.rotation) # reverse the rotation to use "standard" density for uniform distribution
+        log_probs = []
+        mask = torch.ones(x.shape[0], dtype=torch.bool, device=self.device)  # track in-bound points for all points   
+         
+        #decompose rectangle into every dimension and sum up the log densities each, if outside in any dimension, return -inf 
+        for i, (low, high) in enumerate(self.coords):
+            in_bounds = (x[:, i] >= low) & (x[:, i] <= high)
+            mask = mask & in_bounds # if any point is out of bounds, mark it as False
+            log_scale = torch.log(torch.tensor(1.0 / (high - low), device=self.device))
+            log_probs.append(log_scale.expand(x.shape[0], 1))
 
-if __name__ == "__main__":
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        
+        logp = torch.sum(torch.cat(log_probs, dim=1), dim=1, keepdim=True)
+        #logp[~mask] = float('-inf') # for all the points with negative mask, the log density is not defiend i.e. set to -inf (originnally)
+        logp = torch.where(mask.unsqueeze(1), logp, torch.tensor(float(-1e10), device=self.device)) # rather set to -1e10 or other very small value to avoid nans
 
-    gmm = GaussianMixture.symmetric_2D(nmodes=5,std = 1)
-    swiss = SwissRoll2D(device, noise=0.2, scale=(0.5, 0.25), rotation=0)
-    moons = TwoMoons2D(device, noise=0.1, scale=2.0, offset=(1.0, -0.5))
-
-    samples = swiss.sample(1000)
-    plot_samples(samples, title="Swiss Roll",contour=False,save_path="swissrole_plot.png")
-
-    samples = moons.sample(1000)
-    plot_samples(samples, title="Two Moons",contour=False,save_path="moons_plot.png")
-
-    samples = gmm.sample(1000)
-    plot_samples(samples, title="Gaussian Mixture", contour=False, save_path="gmm5_plot.png")
+        return logp

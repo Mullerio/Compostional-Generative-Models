@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import torch
-from .prob_lib import LogDensity, SampleDensity, Alpha, Beta
+from .prob_lib import LogDensity, SampleDensity
+from .schedules import *
 from .ode_lib import ODE, SDE
 from .dataset_lib import Gaussian
 

@@ -54,6 +54,58 @@ class BasicMLP(nn.Module):
                 raise ValueError("For a conditional MLP provide a conditional")
         return self.mlp(torch.concat([x,t],dim=-1))
     
+    
+class EmbeddedBasicMLP(nn.Module):
+    def __init__(self, input_dim: int, hidden_dims: list[int], conditional: bool = False, 
+                 num_conditions: int = None, embedding_dim: int = None):
+        """
+        Args:
+            input_dim: dimension of x
+            hidden_dims: list of hidden layer sizes
+            conditional: whether to use conditional input
+            num_conditions: number of discrete conditions (clusters)
+            embedding_dim: size of the embedding vectors (can be used for guidance)
+        """
+        super().__init__()
+        self.conditional = conditional
+
+        if conditional:
+            assert num_conditions is not None and embedding_dim is not None, "For conditional, provide num_conditions and embedding_dim"
+            self.embed = nn.Embedding(num_conditions, embedding_dim)
+            cond_dim = embedding_dim
+        else:
+            cond_dim = 0
+
+        layers = []
+        current_dim = input_dim + 1 + cond_dim  
+        for i, h in enumerate(hidden_dims):
+            layers.append(nn.Linear(current_dim, h))
+            if i < len(hidden_dims) - 1:
+                layers.append(nn.SiLU())
+            current_dim = h
+        layers.append(nn.Linear(current_dim, input_dim)) 
+
+        self.mlp = nn.Sequential(*layers)    
+
+    def forward(self, x: torch.Tensor, t: torch.Tensor, y_index: torch.Tensor = None) -> torch.Tensor:
+        """
+        Args:
+            x: [batch, input_dim]
+            t: [batch, 1]
+            y_index: [batch] (long) -- index of conditioning cluster 
+        """
+        if self.conditional:
+            if y_index is None:
+                raise ValueError("Conditional model requires y_index")
+            if y_index.dim() == 2:  # make sure y_index is shape [B], not [B,1]
+                y_index = y_index.squeeze(-1)
+            y_embed = self.embed(y_index)  # [batch, embedding_dim]
+            input_tensor = torch.cat([x, t, y_embed], dim=-1)
+        else:
+            input_tensor = torch.cat([x, t], dim=-1)
+
+        return self.mlp(input_tensor)     
+
 
 class VectorFieldODE(ODE):
     """Wrapper to get ODE out of MLP"""
@@ -64,7 +116,7 @@ class VectorFieldODE(ODE):
     def drift(self, x_t : torch.Tensor, t : torch.Tensor):
         return self.mlp(x_t,t)
 
-class Langevin_withFLow(SDE):
+class LangevinWithFLow(SDE):
     """
     General Langevin SDE given a score and flow model 
     """
@@ -91,7 +143,7 @@ class Langevin_withFLow(SDE):
         
         return torch.randn_like(x_t) * self.eps 
         
-class Langevin_Schedule(SDE):
+class LangevinSchedule(SDE):
     """
     For Gaussian paths, the SDE with the flow, given a score approximation, can be derived by hand 
     """
