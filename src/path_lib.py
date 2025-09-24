@@ -88,8 +88,8 @@ class GaussianConditionalProbabilityPath(ConditionalProbabilityPath):
     Gaussian Path following N(alpha_t * z, beta_t**2 * I_d)
     """
     def __init__(self, p_data: SampleDensity, alpha: Alpha, beta: Beta, device = 'cuda'):
-        p_simple = Gaussian.isotropic(p_data.dim, 1.0)
-        super().__init__(p_simple, p_data)
+        p_init = Gaussian.isotropic(p_data.dim, 1.0)
+        super().__init__(p_init, p_data)
         self.alpha = alpha
         self.beta = beta
         self.device = device

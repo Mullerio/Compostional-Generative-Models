@@ -1,4 +1,6 @@
 import torch
+print("torch module path:", torch.__file__)
+print("torch module dir:", dir(torch))
 from abc import ABC, abstractmethod
 from scipy.stats import norm
 import numpy as np

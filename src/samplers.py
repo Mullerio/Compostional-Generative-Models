@@ -30,3 +30,4 @@ class AnnealedProduct(SDE):
     def diffusion(self, x_t : torch.Tensor, t : torch.Tensor) -> torch.Tensor:
         
         return self.sigma * torch.randn_like(x_t)
+    

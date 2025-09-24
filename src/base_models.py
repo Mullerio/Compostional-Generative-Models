@@ -1,14 +1,14 @@
 from .path_lib import *
 from .prob_lib import *
-import torch.nn as nn
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 class BasicMLP(nn.Module):
     """
     Basic MLP used to approximate the target vector field in flow models.
     """
-    def __init__(self, input_dim : int, hidden_dims : list[int], conditional : bool = False, conditional_dim : int = 2):
+    def __init__(self, input_dim : int, output_dim : int, hidden_dims : list[int], conditional : bool = False, conditional_dim : int = 2):
         """
         Args:
             input_dim (int): input dim of nn
@@ -31,7 +31,7 @@ class BasicMLP(nn.Module):
             if i < len(hidden_dims) - 1:
                 layers.append(nn.SiLU())
             current_dim = h
-        layers.append(nn.Linear(current_dim, input_dim))  # output vector field
+        layers.append(nn.Linear(current_dim, output_dim))  # output vector field
 
         self.mlp = nn.Sequential(*layers)
         
@@ -260,14 +260,22 @@ class FlowDiffTrainer(BasicTrainer):
         z = self.path.p_data.sample(n) #[n, dim]
         t = torch.rand(n, 1).to(z) #[n, 1]
         cond_pt = self.path.sample_conditional_path(z, t) #[n, dim]
-        
-        u_theta = self.model(cond_pt, t)
-        if self.modeltype == "FM" or self.modeltype == "FlowMatching":
-            label = self.path.conditional_vector_field(cond_pt, z, t)   
-        elif self.modeltype == "Diff" or self.modeltype == "Diffusion" or self.modeltype == "Score":
-            label = self.path.conditional_score(cond_pt,z,t)
+        if self.modeltype == "density":
+            cond_pt.requires_grad_(True)
+            logp = self.model(cond_pt, t)   # [n, 1]
+            # get gradient wrt x → score
+            score_theta = torch.autograd.grad(
+                outputs=logp.sum(), inputs=cond_pt, create_graph=True)[0]   # [n, dim]
+            label = self.path.conditional_score(cond_pt, z, t)
+            return F.mse_loss(score_theta, label)
         else:
-            raise ValueError("Type not Supported, either FlowMatching or Diffusion")
+            u_theta = self.model(cond_pt, t)
+            if self.modeltype == "FM" or self.modeltype == "FlowMatching":
+                label = self.path.conditional_vector_field(cond_pt, z, t)   
+            elif self.modeltype == "Diff" or self.modeltype == "Diffusion" or self.modeltype == "Score":
+                label = self.path.conditional_score(cond_pt,z,t)
+            else:
+                raise ValueError("Type not Supported, either FlowMatching or Diffusion")
         
         return F.mse_loss(u_theta,label)
     
